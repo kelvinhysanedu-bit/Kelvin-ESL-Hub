@@ -1,0 +1,111 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Replace with the Google account you use as the teacher.
+    function isTeacher() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == 'REPLACE_WITH_TEACHER_EMAIL';
+    }
+
+    function classCode() {
+      return get(/databases/$(database)/documents/private/class).data.classCode;
+    }
+
+    // Secret class code. Only the teacher can read it; the rules below compare against it.
+    match /private/{doc} {
+      allow read, write: if isTeacher();
+    }
+
+    // Next-quiz announcement and extra sections.
+    match /settings/{doc} {
+      allow read: if signedIn();
+      allow write: if isTeacher();
+    }
+
+    // Students see open quizzes (to take) and closed quizzes (to review). Drafts stay private.
+    match /quizzes/{id} {
+      allow read: if isTeacher() || resource.data.status == 'open' || resource.data.status == 'closed';
+      allow write: if isTeacher();
+    }
+
+    // Sign-in records (username + PIN hash). A student can look up one record by id to sign in,
+    // but nobody can list them all.
+    match /students/{sid} {
+      allow get: if signedIn();
+      allow list: if isTeacher();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['sid', 'nickname', 'classCode', 'pinHash', 'createdAt'])
+        && request.resource.data.sid == sid
+        && request.resource.data.classCode == classCode()
+        && request.resource.data.nickname is string
+        && request.resource.data.nickname.size() >= 2
+        && request.resource.data.nickname.size() <= 16
+        && request.resource.data.pinHash is string
+        && request.resource.data.pinHash.size() == 64;
+      allow update, delete: if isTeacher();
+    }
+
+    // Public profile shown on the leaderboard: display name, avatar, level. No PIN data here.
+    match /profiles/{sid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['sid', 'name', 'color', 'glyph', 'level', 'updatedAt'])
+        && request.resource.data.sid == sid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.name.size() <= 24
+        && request.resource.data.color is int
+        && request.resource.data.color >= 0
+        && request.resource.data.color < 8
+        && request.resource.data.glyph is int
+        && request.resource.data.glyph >= 0
+        && request.resource.data.glyph < 7
+        && request.resource.data.level in ['', 'B1', 'B2', 'C1']
+        && exists(/databases/$(database)/documents/students/$(sid));
+      allow delete: if isTeacher();
+    }
+
+    // Comments on the idiom of the day and the quote of the week. Students can post but not edit
+    // or delete; the teacher can delete.
+    match /comments/{cid} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['kind', 'key', 'sid', 'name', 'text', 'createdAt'])
+        && request.resource.data.kind in ['idiom', 'quote']
+        && request.resource.data.key is string
+        && request.resource.data.key.matches('^(idiom|quote):[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && request.resource.data.sid is string
+        && exists(/databases/$(database)/documents/students/$(request.resource.data.sid))
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 24
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.createdAt is int;
+      allow update, delete: if isTeacher();
+    }
+
+    // Quiz results. Create-only: a student can't change or delete a score.
+    match /results/{rid} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['quizId', 'quizTitle', 'quizDate', 'sid', 'nickname', 'total', 'max', 'bySkill', 'answers', 'takenAt'])
+        && rid == request.resource.data.quizId + '__' + request.resource.data.sid
+        && exists(/databases/$(database)/documents/students/$(request.resource.data.sid))
+        && get(/databases/$(database)/documents/quizzes/$(request.resource.data.quizId)).data.status == 'open'
+        && request.resource.data.total is int
+        && request.resource.data.max is int
+        && request.resource.data.total >= 0
+        && request.resource.data.total <= request.resource.data.max
+        && request.resource.data.max <= 1000;
+      allow update, delete: if isTeacher();
+    }
+  }
+}
