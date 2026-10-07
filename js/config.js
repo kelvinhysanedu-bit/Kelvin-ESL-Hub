@@ -8,3 +8,6 @@ export const firebaseConfig = {
   messagingSenderId: "286317731753",
   appId: "1:286317731753:web:1d879aec9d4f160e2d2eb8",
 };
+
+// Class Padlet shown on the student dashboard. Set to null to hide the section.
+export const padletEmbedUrl = "https://padlet.com/padlets/s023lodi75uqr4ozu0sv/embeds/preview_embed";

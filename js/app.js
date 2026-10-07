@@ -1,4 +1,5 @@
 import { createStore } from "./store.js";
+import { padletEmbedUrl } from "./config.js";
 import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor } from "./logic.js";
 import { avatar, glyphIcon, skillVar, countUp, captureRects, playFlip, brandHTML, timeAgo, RM } from "./ui.js";
 import { idiomFor, quoteFor, today, isPreviewDate, msToNextDay, formatCountdown } from "./content.js";
@@ -283,7 +284,16 @@ function homeView() {
   const hero = open.length
     ? open.map((q, i) => heroCard(q, i)).join("")
     : `<article class="card hero rise" style="--i:0"><div class="label">This week's quiz</div><h2>No quiz is open right now</h2><p class="sub">Check the next quiz date on the right. You can review your past quizzes in your profile.</p></article>`;
-  return `<div class="dash"><div class="stack">${hero}${leaderboardCard(open.length || 1)}</div><aside class="stack">${railCards()}</aside></div>`;
+  const idx = open.length || 1;
+  return `<div class="dash"><div class="stack">${hero}${leaderboardCard(idx)}${padletCard(idx + 1)}</div><aside class="stack">${railCards()}</aside></div>`;
+}
+
+function padletCard(i) {
+  if (!padletEmbedUrl) return "";
+  return `<section class="card rise" style="--i:${i}">
+    <div class="card-head"><div><h2>Class Padlet</h2><p class="sub">Share ideas, questions and examples with the class.</p></div></div>
+    <div class="padlet-embed"><iframe src="${esc(padletEmbedUrl)}" title="Class Padlet" loading="lazy" frameborder="0"></iframe></div>
+  </section>`;
 }
 
 /* ------------------------------------------- idiom of the day, quote of the week */
