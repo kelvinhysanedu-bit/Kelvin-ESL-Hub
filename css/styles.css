@@ -308,14 +308,30 @@ select.compact { width: auto; padding: 6px 10px; font-size: 13px; }
 .glyph-btn svg { stroke: currentColor; }
 .pick input:checked + .glyph-btn { border-color: var(--ink); }
 .pick input:focus-visible + .glyph-btn { outline: 2px solid var(--focus); outline-offset: 2px; }
-.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0 20px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin: 14px 0 20px; }
 .stat { border-top: 1px solid var(--line); padding-top: 8px; }
 .stat b { display: block; font-family: "Newsreader", serif; font-size: 26px; font-weight: 600; line-height: 1.1; }
 .stat span { font-size: 12.5px; color: var(--muted); }
 .hist { display: grid; }
-.hist-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.hist-item { padding: 16px 0; border-top: 1px solid var(--line); }
 .hist-item:first-child { border-top: 0; }
 .hist-item h3 { font-size: 18px; }
+.attempts { display: grid; gap: 8px; margin-top: 12px; }
+.att { display: grid; grid-template-columns: 110px 84px minmax(0, 1fr) auto; gap: 8px 14px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; transition: border-color 0.2s, background 0.2s; }
+.att.on { border-color: var(--accent); background: var(--tint); }
+.att-main { display: flex; flex-direction: column; line-height: 1.3; }
+.att-main .when { color: var(--muted); font-size: 12.5px; }
+.att-score { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.att-score b { font-family: "Newsreader", serif; font-size: 22px; font-weight: 600; }
+.att-score small { color: var(--muted); font-size: 12px; }
+.att-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.att .mt { height: 34px; }
+.pill { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.att-note { margin: 10px 0 0; }
+@media (max-width: 720px) {
+  .att { grid-template-columns: minmax(0, 1fr) auto; }
+  .att .mt, .att-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}
 
 /* admin */
 .admin-nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 20px; }

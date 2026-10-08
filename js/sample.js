@@ -205,9 +205,19 @@ export function demoSeed() {
       total,
       max: 24,
       bySkill,
+      attempt: 1,
       takenAt: Date.now() - (i + 1) * 3600000,
     };
   });
+  /* Chloé took the quiz again and scored higher. The leaderboard still shows her first try until she picks attempt 2. */
+  const retry = [3, 2, 2, 2, 3, 2, 2, 2];
+  results[`${quiz.id}__demo_chloe__2`] = {
+    ...results[`${quiz.id}__demo_chloe`],
+    attempt: 2,
+    total: retry.reduce((a, b) => a + b, 0),
+    bySkill: Object.fromEntries(SKILLS.map((s, k) => [s.id, { got: retry[k], max: 3 }])),
+    takenAt: Date.now() - 1800000,
+  };
   const idiom = idiomFor(today());
   const quote = quoteFor(today());
   const now = Date.now();

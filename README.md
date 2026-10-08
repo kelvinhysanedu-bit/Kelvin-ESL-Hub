@@ -25,7 +25,8 @@ Don't double-click `index.html` or `admin.html` directly. Browsers block the pag
 ## What students can do
 
 - **Create a profile** with a class code, a username, a 4-digit PIN, a leaderboard name and a level (B1, B2, C1).
-- **Take the weekly quiz** at any time, once.
+- **Take the weekly quiz** at any time, as many times as they like. Each attempt is saved and counted.
+- **Choose which attempt counts.** The leaderboard shows a student's first try. If they have taken a quiz two or more times, **Profile > My quizzes** lets them choose a different attempt with **Use this score**. They can change it back at any time. Nothing about this appears on the dashboard or the result screen. Students who never choose stay on their first try.
 - **See the leaderboard** live: rank, name, level, a title for their strongest area, a bar for each of the eight areas, and total points. Filter by week, all time, or level.
 - **Edit their profile**: name on the leaderboard, level, colour and picture. The username they sign in with stays the same.
 - **Review every quiz they've taken**: the right answer, their answer, and the "Why" you wrote, with the reading text or listening transcript. Open and closed quizzes can be reviewed.
@@ -105,6 +106,8 @@ Answer: creativity
 2. **Class** tab: set a class code and tell your students.
 3. **Quizzes** tab: paste a quiz, choose **Open**, and save.
 4. **Announcements** tab: set the next quiz date and the extra sections.
+
+On the teacher page, **Class > Results** lists every attempt, with **On board** marking the one that counts on the leaderboard. The CSV has the same columns. To try the hub with practice data without touching the live data, add `?demo=1` to the address.
 
 If a student forgets their PIN, use **Class > Students > Reset PIN**. They sign up again with the same username and keep their results.
 

@@ -1,9 +1,11 @@
 import { firebaseConfig } from "./config.js";
 import { demoSeed } from "./sample.js";
-import { slug } from "./logic.js";
+import { slug, resultId } from "./logic.js";
 
+/* Add ?demo=1 to the address to try the hub with practice data that stays in this browser. */
 export function createStore({ admin = false } = {}) {
-  return firebaseConfig ? firebaseStore(admin) : demoStore();
+  const forceDemo = new URLSearchParams(location.search).has("demo");
+  return firebaseConfig && !forceDemo ? firebaseStore(admin) : demoStore();
 }
 
 const clean = (o) => JSON.parse(JSON.stringify(o));
@@ -84,7 +86,7 @@ function demoStore() {
       notify("profiles");
     },
     async submitResult(res) {
-      const id = `${res.quizId}__${res.sid}`;
+      const id = resultId(res);
       if (db.results[id]) throw { code: "already" };
       db.results[id] = res;
       save();
@@ -206,7 +208,7 @@ async function firebaseStore(admin) {
     },
     saveProfile: (p) => fs.setDoc(fs.doc(db, "profiles", p.sid), p),
     async submitResult(res) {
-      const ref = fs.doc(db, "results", `${res.quizId}__${res.sid}`);
+      const ref = fs.doc(db, "results", resultId(res));
       if ((await fs.getDoc(ref)).exists()) throw { code: "already" };
       try {
         await fs.setDoc(ref, res);

@@ -1,5 +1,5 @@
 import { createStore } from "./store.js";
-import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug } from "./logic.js";
+import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults } from "./logic.js";
 import { sampleText } from "./sample.js";
 import { brandHTML, timeAgo } from "./ui.js";
 import { idiomFor, quoteFor, today, IDIOMS, QUOTES } from "./content.js";
@@ -91,9 +91,10 @@ function quizzesPanel() {
   const rows = list.length
     ? list
         .map((q) => {
-          const taken = results.filter((r) => r.quizId === q.id).length;
+          const mine = results.filter((r) => r.quizId === q.id);
+          const students = new Set(mine.map((r) => r.sid)).size;
           return `<div class="quiz-item"><div><h3>${esc(q.title)}</h3>
-            <div class="sub">${q.questions.length} questions${q.date ? " &middot; " + esc(fmtDate(q.date)) : ""} &middot; ${taken} finished</div></div>
+            <div class="sub">${q.questions.length} questions${q.date ? " &middot; " + esc(fmtDate(q.date)) : ""} &middot; ${students} ${students === 1 ? "student" : "students"}, ${mine.length} ${mine.length === 1 ? "attempt" : "attempts"}</div></div>
             <div class="actions"><span class="status ${esc(q.status)}">${esc(q.status)}</span>
               ${statusSel(q.status, `data-act="status" data-id="${esc(q.id)}" aria-label="Status of ${esc(q.title)}"`)}
               <button class="btn ghost small" data-act="edit" data-id="${esc(q.id)}">Edit</button>
@@ -209,6 +210,7 @@ function dailyPanel() {
 function classPanel() {
   const quizTitle = Object.fromEntries(quizzes.map((q) => [q.id, q.title]));
   const rows = [...results].sort((a, b) => b.takenAt - a.takenAt);
+  const counted = new Set(effectiveResults(results, (sid) => profiles.get(sid)).map((r) => r.id));
   const people = [...students].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   const nameOf = (sid, fb) => profiles.get(sid)?.name || fb;
   return `<section class="card"><div class="card-head"><div><h2>Class code</h2>
@@ -225,10 +227,10 @@ function classPanel() {
         <td><button class="btn danger small" data-act="reset-pin" data-sid="${esc(s.sid)}">Reset PIN</button></td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty">Nobody has joined yet.</p>`}</section>
     <section class="card"><div class="card-head"><div><h2>Results</h2>
-      <p class="sub">Delete a result to let that student retake the quiz.</p></div>
+      <p class="sub">Every attempt is listed. <strong>On board</strong> marks the attempt that counts on the leaderboard: the first try, unless the student chose another. Delete an attempt to remove it.</p></div>
       <button class="btn ghost small" data-act="csv" ${rows.length ? "" : "disabled"}>Download CSV</button></div>
-      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>Quiz</th><th>Score</th>${SKILLS.map((s) => `<th title="${esc(s.label)}">${s.short}</th>`).join("")}<th></th></tr></thead><tbody>
-      ${rows.map((r) => `<tr><td>${esc(nameOf(r.sid, r.nickname))}</td><td>${esc(quizTitle[r.quizId] || r.quizTitle)}</td><td>${r.total}/${r.max}</td>
+      ${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Student</th><th>Quiz</th><th>Attempt</th><th>On board</th><th>Score</th>${SKILLS.map((s) => `<th title="${esc(s.label)}">${s.short}</th>`).join("")}<th></th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td>${esc(nameOf(r.sid, r.nickname))}</td><td>${esc(quizTitle[r.quizId] || r.quizTitle)}</td><td>${attemptOf(r)}</td><td>${counted.has(r.id) ? "&#10003;" : ""}</td><td>${r.total}/${r.max}</td>
         ${SKILLS.map((s) => `<td>${r.bySkill[s.id] ? r.bySkill[s.id].got + "/" + r.bySkill[s.id].max : "&ndash;"}</td>`).join("")}
         <td><button class="btn danger small" data-act="del-result" data-id="${esc(r.id)}">Delete</button></td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty">No results yet.</p>`}</section>`;
@@ -250,10 +252,11 @@ function render() {
 }
 
 function csv() {
-  const head = ["Student", "Username", "Quiz", "Date", "Total", "Max", ...SKILLS.map((s) => s.label)];
+  const head = ["Student", "Username", "Quiz", "Date", "Attempt", "On leaderboard", "Total", "Max", ...SKILLS.map((s) => s.label)];
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const counted = new Set(effectiveResults(results, (sid) => profiles.get(sid)).map((r) => r.id));
   const lines = results.map((r) =>
-    [profiles.get(r.sid)?.name || r.nickname, r.nickname, r.quizTitle, r.quizDate, r.total, r.max, ...SKILLS.map((s) => (r.bySkill[s.id] ? `${r.bySkill[s.id].got}/${r.bySkill[s.id].max}` : ""))].map(q).join(",")
+    [profiles.get(r.sid)?.name || r.nickname, r.nickname, r.quizTitle, r.quizDate, attemptOf(r), counted.has(r.id) ? "yes" : "no", r.total, r.max, ...SKILLS.map((s) => (r.bySkill[s.id] ? `${r.bySkill[s.id].got}/${r.bySkill[s.id].max}` : ""))].map(q).join(",")
   );
   const blob = new Blob(["﻿" + [head.map(q).join(","), ...lines].join("\n")], { type: "text/csv" });
   const a = document.createElement("a");
@@ -339,9 +342,9 @@ document.addEventListener("click", guard(async (e) => {
       say("Comment deleted.");
     }
   } else if (act === "del-result") {
-    if (confirm("Delete this result? The student will be able to retake the quiz.")) {
+    if (confirm("Delete this attempt? This can't be undone.")) {
       await store.deleteResult(el.dataset.id);
-      say("Result deleted.");
+      say("Attempt deleted.");
     }
   }
 }));

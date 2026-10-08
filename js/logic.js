@@ -244,6 +244,32 @@ export function validateQuiz(input) {
   return { errors, quiz: { ...obj, questions } };
 }
 
+/* ------------------------------------------------------------ attempts */
+
+/* A student can take a quiz many times. Results saved before retakes existed have no "attempt" field: they are attempt 1.
+   The leaderboard counts attempt 1 unless the student picked another attempt in their profile (profile.picks[quizId]). */
+export const attemptOf = (r) => r.attempt || 1;
+export const resultId = (r) => (attemptOf(r) === 1 ? `${r.quizId}__${r.sid}` : `${r.quizId}__${r.sid}__${attemptOf(r)}`);
+
+export function pickedAttempt(profile, quizId) {
+  const p = profile && profile.picks ? profile.picks[quizId] : undefined;
+  return Number.isInteger(p) && p >= 1 ? p : 1;
+}
+
+export function effectiveResults(results, profileOf) {
+  const groups = new Map();
+  for (const r of results) {
+    const k = r.quizId + "|" + r.sid;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  return [...groups.values()].map((list) => {
+    list.sort((a, b) => attemptOf(a) - attemptOf(b));
+    const want = pickedAttempt(profileOf(list[0].sid), list[0].quizId);
+    return list.find((r) => attemptOf(r) === want) || list[0];
+  });
+}
+
 /* --------------------------------------------------------- leaderboard */
 
 export function buildBoard(results) {

@@ -1,6 +1,6 @@
 import { createStore } from "./store.js";
 import { padletEmbedUrl } from "./config.js";
-import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor } from "./logic.js";
+import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor, attemptOf, effectiveResults, pickedAttempt } from "./logic.js";
 import { avatar, glyphIcon, skillVar, countUp, captureRects, playFlip, brandHTML, timeAgo, RM } from "./ui.js";
 import { idiomFor, quoteFor, today, isPreviewDate, msToNextDay, formatCountdown } from "./content.js";
 
@@ -27,6 +27,7 @@ let lbLevel = "";
 let warned = false;
 let reviewAll = false;
 let profileMsg = null;
+let pickMsg = null;
 let listenItems = [];
 let plays = new Map();
 let enterTimer;
@@ -73,12 +74,13 @@ function saveMe(s) {
 
 const nl2br = (s) => esc(s).replace(/\n/g, "<br>");
 const prof = (sid, fallback) => profiles.get(sid) || { sid, name: fallback || "Student", color: nameColor(fallback || sid), glyph: 0, level: "" };
+/* The leaderboard counts one attempt per student per quiz: their first, unless they picked another in their profile. */
 const decorated = () =>
-  results.map((r) => {
+  effectiveResults(results, (sid) => profiles.get(sid)).map((r) => {
     const p = prof(r.sid, r.nickname);
     return { ...r, nickname: p.name, color: p.color, glyph: p.glyph, level: p.level };
   });
-const myResult = (quizId) => results.find((r) => r.quizId === quizId && r.sid === me?.sid);
+const myAttempts = (quizId) => results.filter((r) => r.quizId === quizId && r.sid === me?.sid).sort((a, b) => attemptOf(a) - attemptOf(b));
 const quizById = (id) => quizzes.find((q) => q.id === id);
 const cells = (bySkill) =>
   SKILLS.map((s) => {
@@ -189,8 +191,9 @@ function skillCounts(quiz) {
 }
 
 function heroCard(quiz, i) {
-  const mine = myResult(quiz.id);
-  const done = results.filter((r) => r.quizId === quiz.id).length;
+  const attempts = myAttempts(quiz.id);
+  const last = attempts[attempts.length - 1];
+  const done = new Set(results.filter((r) => r.quizId === quiz.id).map((r) => r.sid)).size;
   return `<article class="card hero rise" style="--i:${i}">
     <div class="label">This week's quiz</div>
     <h2>${esc(quiz.title)}</h2>
@@ -198,11 +201,12 @@ function heroCard(quiz, i) {
     <div class="chips">${skillCounts(quiz).map((s) => `<span class="chip"><i style="--c:${skillVar(s.id)}"></i>${esc(s.name)} &middot; ${s.n}</span>`).join("")}</div>
     <div class="hero-foot">
       ${
-        mine
-          ? `<button class="btn" data-act="result" data-id="${esc(quiz.id)}">See my result (${mine.total}/${mine.max})</button>`
+        last
+          ? `<button class="btn" data-act="start" data-id="${esc(quiz.id)}">Take it again</button>
+             <button class="btn ghost" data-act="result" data-id="${esc(quiz.id)}">See my latest result (${last.total}/${last.max})</button>`
           : `<button class="btn" data-act="start" data-id="${esc(quiz.id)}">Start the quiz</button>`
       }
-      <span class="count">${done} ${done === 1 ? "player has" : "players have"} finished</span>
+      <span class="count">${done} ${done === 1 ? "player has" : "players have"} finished${attempts.length ? ` &middot; you've taken it ${attempts.length} ${attempts.length === 1 ? "time" : "times"}` : ""}</span>
     </div>
   </article>`;
 }
@@ -525,7 +529,9 @@ async function onSubmitQuiz(form) {
   }
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   const sc = scoreQuiz(activeQuiz, answers);
-  const result = {
+  const prior = myAttempts(activeQuiz.id);
+  let attempt = prior.length ? Math.max(...prior.map(attemptOf)) + 1 : 1;
+  const base = {
     quizId: activeQuiz.id,
     quizTitle: activeQuiz.title,
     quizDate: activeQuiz.date || "",
@@ -539,17 +545,26 @@ async function onSubmitQuiz(form) {
   };
   const btn = form.querySelector("button[type=submit]");
   btn.disabled = true;
+  let result = null;
   try {
-    await store.submitResult(result);
+    // If another device just saved the same attempt number, try the next one.
+    for (let tries = 0; tries < 5 && !result; tries++) {
+      try {
+        await store.submitResult({ ...base, attempt });
+        result = { ...base, attempt };
+      } catch (e) {
+        if (e.code !== "already") throw e;
+        attempt += 1;
+      }
+    }
+    if (!result) throw { code: "busy" };
   } catch (e) {
     console.error("Saving the score failed:", e);
     btn.disabled = false;
     msg.hidden = false;
     msg.className = "msg err";
     msg.textContent =
-      e.code === "already"
-        ? "You already finished this quiz. Go back to see your result."
-        : e.code === "denied"
+      e.code === "denied"
         ? "The server refused your score. Ask your teacher to check that this quiz is set to Open and that the Firebase rules are published."
         : `We couldn't save your score (${e.code || e.message || "unknown error"}). Check your internet and press the button again.`;
     return;
@@ -617,8 +632,12 @@ function reviewCard(quiz, result) {
 
 function resultView() {
   const { quiz, result, from } = shown;
+  const attempt = attemptOf(result);
+  const picked = pickedAttempt(profiles.get(me.sid), quiz.id);
+  const isCounted = attempt === picked;
+  const countedRes = results.find((r) => r.quizId === quiz.id && r.sid === me.sid && attemptOf(r) === picked);
   const rows = buildBoard(decorated().filter((r) => r.quizId === quiz.id));
-  const mine = rows.find((r) => r.sid === me.sid);
+  const mine = isCounted ? rows.find((r) => r.sid === me.sid) : buildBoard([result])[0];
   const bars = SKILLS.filter((s) => result.bySkill[s.id])
     .map((s) => {
       const v = result.bySkill[s.id];
@@ -626,10 +645,14 @@ function resultView() {
     })
     .join("");
   return `<div class="stack"><section class="card rise" style="--i:0">
-    <div class="label">${esc(quiz.title)}</div>
+    <div class="label">${esc(quiz.title)}${attempt > 1 ? ` &middot; attempt ${attempt}` : ""}</div>
     <div class="result-top">
-      <div class="big-score"><span class="num" data-v="${result.total}" data-sk="big|${esc(quiz.id)}">${result.total}</span><small> / ${result.max}</small></div>
-      <div>${mine ? `<h2>You are #${mine.rank} on this quiz</h2><p class="sub">Your tag: <strong>${esc(mine.title)}</strong>${mine.crowns.length ? " &middot; Best at " + mine.crowns.map((c) => SKILL[c].name).join(", ") : ""}</p>` : ""}
+      <div class="big-score"><span class="num" data-v="${result.total}" data-sk="big|${esc(quiz.id)}|${attempt}">${result.total}</span><small> / ${result.max}</small></div>
+      <div>${
+        isCounted
+          ? mine ? `<h2>You are #${mine.rank} on this quiz</h2><p class="sub">Your tag: <strong>${esc(mine.title)}</strong>${mine.crowns.length ? " &middot; Best at " + mine.crowns.map((c) => SKILL[c].name).join(", ") : ""}</p>` : ""
+          : `<h2>Attempt ${attempt}</h2>${countedRes ? `<p class="sub">On the leaderboard: your attempt ${picked} (${countedRes.total} points).</p>` : ""}`
+      }
       ${mine && mine.weakest ? `<p class="sub">Practise next: <strong>${esc(SKILL[mine.weakest].label)}</strong></p>` : ""}</div>
     </div>
     <div class="skill-bars">${bars}</div>
@@ -653,8 +676,8 @@ function previewHTML(name, color, glyph, level) {
 
 function profileView() {
   const p = prof(me.sid, me.nickname);
-  const mine = decorated().filter((r) => r.sid === me.sid).sort((a, b) => b.takenAt - a.takenAt);
-  const row = buildBoard(mine)[0];
+  const allMine = results.filter((r) => r.sid === me.sid);
+  const row = buildBoard(decorated().filter((r) => r.sid === me.sid))[0];
   const avg = row ? pct(row.total, row.max) : 0;
   const bars = row
     ? SKILLS.filter((s) => row.bySkill[s.id])
@@ -664,13 +687,39 @@ function profileView() {
         })
         .join("")
     : "";
-  const hist = mine
-    .map((r) => {
-      const q = quizById(r.quizId);
-      return `<div class="hist-item"><div><h3>${esc(r.quizTitle)}</h3>
-        <div class="sub">${r.quizDate ? esc(fmtDate(r.quizDate)) + " &middot; " : ""}${r.total} of ${r.max} points</div></div>
-        <div class="mt" role="img" aria-label="${esc(summary(r.bySkill))}">${cells(r.bySkill)}</div>
-        <button class="btn ghost small" data-act="review" data-id="${esc(r.quizId)}" ${q ? "" : "disabled"}>${q ? "Review answers" : "Not available"}</button></div>`;
+  const groups = new Map();
+  allMine.forEach((r) => {
+    if (!groups.has(r.quizId)) groups.set(r.quizId, []);
+    groups.get(r.quizId).push(r);
+  });
+  const hist = [...groups.entries()]
+    .map(([quizId, list]) => {
+      list.sort((a, b) => attemptOf(a) - attemptOf(b));
+      return { quizId, list, latest: Math.max(...list.map((r) => r.takenAt)) };
+    })
+    .sort((a, b) => b.latest - a.latest)
+    .map(({ quizId, list }) => {
+      const q = quizById(quizId);
+      const multi = list.length >= 2;
+      const want = pickedAttempt(p, quizId);
+      const onAttempt = attemptOf(list.find((r) => attemptOf(r) === want) || list[0]);
+      const first = list[0];
+      const rowsHTML = list
+        .map((r) => {
+          const a = attemptOf(r);
+          const on = a === onAttempt;
+          return `<div class="att ${multi && on ? "on" : ""}">
+            <div class="att-main"><strong>Attempt ${a}</strong><span class="when">${esc(timeAgo(r.takenAt))}</span></div>
+            <div class="att-score"><b class="num">${r.total}</b><small> / ${r.max}</small></div>
+            <div class="mt" role="img" aria-label="${esc(summary(r.bySkill))}">${cells(r.bySkill)}</div>
+            <div class="att-actions"><button class="btn ghost small" data-act="review" data-id="${esc(quizId)}" data-attempt="${a}" ${q ? "" : "disabled"}>${q ? "Review" : "Not available"}</button>
+              ${multi ? (on ? '<span class="pill">On the leaderboard</span>' : `<button class="btn small" data-act="pick" data-id="${esc(quizId)}" data-attempt="${a}">Use this score</button>`) : ""}</div></div>`;
+        })
+        .join("");
+      return `<div class="hist-item"><h3>${esc(first.quizTitle)}</h3>
+        <div class="sub">${first.quizDate ? esc(fmtDate(first.quizDate)) + " &middot; " : ""}taken ${list.length} ${list.length === 1 ? "time" : "times"}</div>
+        <div class="attempts">${rowsHTML}</div>
+        ${multi ? '<p class="sub att-note">The leaderboard shows your first try unless you choose a different attempt. You can change your choice at any time.</p>' : ""}</div>`;
     })
     .join("");
   return `<div class="profile-grid">
@@ -688,13 +737,15 @@ function profileView() {
       ${
         row
           ? `<div class="stats"><div class="stat"><b class="num">${row.quizzes}</b><span>${row.quizzes === 1 ? "quiz" : "quizzes"} taken</span></div>
-             <div class="stat"><b class="num">${avg}%</b><span>average score</span></div>
+             <div class="stat"><b class="num">${allMine.length}</b><span>${allMine.length === 1 ? "attempt" : "attempts"} in total</span></div>
+             <div class="stat"><b class="num">${avg}%</b><span>average on the leaderboard</span></div>
              <div class="stat"><b>${esc(row.title)}</b><span>your tag</span></div></div>
              <div class="skill-bars" style="margin-top:0">${bars}</div>
              ${row.weakest ? `<p class="sub">Practise next: <strong>${esc(SKILL[row.weakest].label)}</strong></p>` : ""}`
           : `<p class="sub">Take your first quiz and your strengths will show up here.</p>`
       }</section>
-      <section class="card rise" style="--i:2"><h2>My quizzes</h2><p class="sub" style="margin-bottom:6px">Open a quiz to see every mistake with the right answer and why.</p>
+      <section class="card rise" style="--i:2"><h2>My quizzes</h2><p class="sub" style="margin-bottom:6px">Review an attempt to see every mistake with the right answer and why.</p>
+        ${pickMsg ? `<div class="msg ${pickMsg.kind}" role="status" style="margin-top:12px">${esc(pickMsg.text)}</div>` : ""}
         <div class="hist">${hist || '<p class="empty">No quizzes yet.</p>'}</div></section></div></div>`;
 }
 
@@ -713,7 +764,7 @@ async function onSaveProfile(form) {
     profileMsg = { kind: "err", text: "Your name needs 2 to 24 letters or numbers." };
     return render(false);
   }
-  const profile = { sid: me.sid, name, color: Number(f.get("color")), glyph: Number(f.get("glyph")), level: String(f.get("level") || ""), updatedAt: Date.now() };
+  const profile = { sid: me.sid, name, color: Number(f.get("color")), glyph: Number(f.get("glyph")), level: String(f.get("level") || ""), picks: { ...(profiles.get(me.sid)?.picks || {}) }, updatedAt: Date.now() };
   try {
     await store.saveProfile(profile);
     profiles.set(me.sid, profile);
@@ -753,6 +804,7 @@ function go(next) {
   view = next;
   if (next !== "result") shown = next === "quiz" ? shown : null;
   profileMsg = null;
+  pickMsg = null;
   render(true);
   window.scrollTo(0, 0);
 }
@@ -793,11 +845,27 @@ document.addEventListener("click", async (e) => {
     window.scrollTo(0, 0);
   } else if (act === "result" || act === "review") {
     const quiz = quizById(el.dataset.id);
-    const result = myResult(el.dataset.id);
+    const list = myAttempts(el.dataset.id);
+    const want = Number(el.dataset.attempt) || (list.length ? attemptOf(list[list.length - 1]) : 0);
+    const result = list.find((r) => attemptOf(r) === want);
     if (!quiz || !result) return;
     shown = { quiz, result, from: act === "review" ? "profile" : "home" };
     reviewAll = false;
     go("result");
+  } else if (act === "pick") {
+    const quizId = el.dataset.id;
+    const attempt = Number(el.dataset.attempt);
+    const old = profiles.get(me.sid) || prof(me.sid, me.nickname);
+    const profile = { sid: me.sid, name: old.name, color: old.color, glyph: old.glyph, level: old.level || "", picks: { ...(old.picks || {}), [quizId]: attempt }, updatedAt: Date.now() };
+    const title = (results.find((r) => r.quizId === quizId) || {}).quizTitle || "this quiz";
+    try {
+      await store.saveProfile(profile);
+      profiles.set(me.sid, profile);
+      pickMsg = { kind: "ok", text: `Done. The leaderboard now shows your attempt ${attempt} for ${title}.` };
+    } catch {
+      pickMsg = { kind: "err", text: "We couldn't save that. Check your internet and try again." };
+    }
+    render(false);
   } else if (act === "home") {
     go("home");
   } else if (act === "lb") {
