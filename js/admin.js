@@ -187,9 +187,9 @@ function dailyPanel() {
       ${flashHTML()}
       ${
         allComments.length
-          ? `<div class="table-wrap"><table><thead><tr><th>When</th><th>On</th><th>Student</th><th>Comment</th><th></th></tr></thead><tbody>
+          ? `<div class="table-wrap"><table><thead><tr><th>When</th><th>On</th><th>Student</th><th>Comment</th><th>Loves</th><th></th></tr></thead><tbody>
         ${allComments.map((c) => `<tr><td>${esc(timeAgo(c.createdAt))}</td><td>${esc(label(c.key))}</td><td>${esc(profiles.get(c.sid)?.name || c.name)}</td>
-          <td style="white-space:normal;min-width:220px">${esc(c.text)}</td><td><button class="btn danger small" data-act="del-comment" data-id="${esc(c.id)}">Delete</button></td></tr>`).join("")}
+          <td style="white-space:normal;min-width:220px">${esc(c.text)}${c.editedAt ? ' <em class="sub">(edited)</em>' : ""}</td><td>${(c.loves || []).length || ""}</td><td><button class="btn danger small" data-act="del-comment" data-id="${esc(c.id)}">Delete</button></td></tr>`).join("")}
         </tbody></table></div>`
           : `<p class="empty">No comments yet.</p>`
       }</section>

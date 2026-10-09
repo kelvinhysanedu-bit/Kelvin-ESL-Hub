@@ -222,7 +222,7 @@ export function demoSeed() {
   const quote = quoteFor(today());
   const now = Date.now();
   const comments = {
-    c1: { kind: "idiom", key: idiom.key, sid: "demo_amira", name: "Amira", text: `This one is new for me. I'll try to use "${idiom.item.text}" in an email this week.`, createdAt: now - 5400000 },
+    c1: { kind: "idiom", key: idiom.key, sid: "demo_amira", name: "Amira", text: `This one is new for me. I'll try to use "${idiom.item.text}" in an email this week.`, createdAt: now - 5400000, loves: ["demo_diego", "demo_mei"] },
     c2: { kind: "idiom", key: idiom.key, sid: "demo_diego", name: "Diego", text: "We have a similar expression in Spanish, so it was easy to remember.", createdAt: now - 2700000 },
     c3: { kind: "quote", key: quote.key, sid: "demo_mei", name: "Mei", text: "This really resonates with me. I'm going to think about it every morning before I study.", createdAt: now - 7200000 },
   };

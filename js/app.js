@@ -36,6 +36,8 @@ let daily = computeDaily();
 let comments = {};
 let commentUnsubs = [];
 let modalKind = null;
+let editing = null;
+let justLoved = null;
 let ready = false;
 
 function computeDaily() {
@@ -295,8 +297,8 @@ function homeView() {
 function padletCard(i) {
   if (!padletEmbedUrl) return "";
   return `<section class="card rise" style="--i:${i}">
-    <div class="card-head"><div><h2>Class Padlet</h2><p class="sub">Share ideas, questions and examples with the class.</p></div></div>
-    <div class="padlet-embed"><iframe src="${esc(padletEmbedUrl)}" title="Class Padlet" loading="lazy" frameborder="0"></iframe></div>
+    <div class="card-head"><div><h2>Reflection board</h2><p class="sub">Reflect on your English journey so far. Share what you've learned, what has been difficult, and what you're proud of.</p></div></div>
+    <div class="padlet-embed"><iframe src="${esc(padletEmbedUrl)}" title="Reflection board" loading="lazy" frameborder="0"></iframe></div>
   </section>`;
 }
 
@@ -344,23 +346,121 @@ function modalHTML(kind) {
   </div>`;
 }
 
+const HEART = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-9.4-9.3A5.2 5.2 0 0 1 12 6.2a5.2 5.2 0 0 1 9.4 5c-1.9 4.7-9.4 9.3-9.4 9.3z"/></svg>';
+
+function commentHTML(c) {
+  const p = prof(c.sid, c.name);
+  const mine = c.sid === me?.sid;
+  const owns = mine && !!c.uid && c.uid === store.uid();
+  const loves = c.loves || [];
+  const loved = loves.includes(me?.sid);
+  const lovedBy = loves.length ? "Loved by " + loves.map((s) => prof(s).name).join(", ") : "Love this comment";
+  const isEditing = editing && editing.id === c.id;
+  const body = isEditing
+    ? `<form class="cm-edit" data-id="${esc(c.id)}"><textarea id="editText" rows="3" maxlength="${MAX_COMMENT}" aria-label="Edit your comment">${esc(editing.text)}</textarea>
+        <div class="cm-actions"><button class="btn small" type="submit">Save</button><button class="btn ghost small" type="button" data-act="cm-cancel">Cancel</button>
+        <span class="msg err" id="editMsg" hidden></span></div></form>`
+    : `<p>${nl2br(c.text)}</p>`;
+  const love = mine
+    ? loves.length
+      ? `<span class="love static" title="${esc(lovedBy)}">${HEART}<span class="num">${loves.length}</span></span>`
+      : ""
+    : `<button type="button" class="love ${loved ? "on" : ""} ${justLoved === c.id ? "just" : ""}" data-act="cm-love" data-id="${esc(c.id)}" aria-pressed="${loved}"
+        aria-label="${loved ? "Remove your love" : "Love this comment"}" title="${esc(lovedBy)}">${HEART}<span class="num">${loves.length || ""}</span></button>`;
+  const manage = owns ? `<button type="button" class="link-btn" data-act="cm-edit" data-id="${esc(c.id)}">Edit</button><button type="button" class="link-btn" data-act="cm-delete" data-id="${esc(c.id)}">Delete</button>` : "";
+  return `<article class="cm">${avatar(p.name, p.color, p.glyph, 32)}<div class="cm-body">
+    <div class="cm-h"><strong>${esc(p.name)}</strong>${mine ? '<span class="you-tag">YOU</span>' : ""}<span class="when">${esc(timeAgo(c.createdAt))}${c.editedAt ? " &middot; edited" : ""}</span></div>
+    ${body}${isEditing ? "" : `<div class="cm-actions">${love}${manage}</div>`}</div></article>`;
+}
+
 function renderComments() {
   if (!modalKind || !$modal.open) return;
+  if (editing && document.activeElement && document.activeElement.id === "editText") return;
   const list = [...(comments[daily[modalKind].key] || [])].sort((a, b) => b.createdAt - a.createdAt);
   document.getElementById("cmHead").textContent = list.length ? `${list.length} ${list.length === 1 ? "comment" : "comments"}` : "";
-  document.getElementById("cmList").innerHTML = list.length
-    ? list
-        .map((c) => {
-          const p = prof(c.sid, c.name);
-          return `<article class="cm">${avatar(p.name, p.color, p.glyph, 32)}<div><div class="cm-h"><strong>${esc(p.name)}</strong>${c.sid === me?.sid ? '<span class="you-tag">YOU</span>' : ""}<span class="when">${esc(timeAgo(c.createdAt))}</span></div>
-            <p>${nl2br(c.text)}</p></div></article>`;
-        })
-        .join("")
-    : `<p class="empty">Nobody has shared yet. Be the first!</p>`;
+  document.getElementById("cmList").innerHTML = list.length ? list.map(commentHTML).join("") : `<p class="empty">Nobody has shared yet. Be the first!</p>`;
+}
+
+const currentComments = () => comments[daily[modalKind].key] || [];
+const cmSay = (text, kind) => {
+  const m = document.getElementById("cmMsg");
+  if (!m) return;
+  m.hidden = false;
+  m.className = "msg " + kind;
+  m.textContent = text;
+};
+
+function startEdit(id) {
+  const c = currentComments().find((x) => x.id === id);
+  if (!c) return;
+  editing = { id, text: c.text };
+  renderComments();
+  const ta = document.getElementById("editText");
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
+async function saveEdit(form) {
+  const text = String(new FormData(form).get("text") ?? form.querySelector("textarea").value).trim();
+  const msg = document.getElementById("editMsg");
+  const fail = (t) => {
+    msg.hidden = false;
+    msg.textContent = t;
+  };
+  if (!text) return fail("Write a few words, or cancel and use Delete.");
+  const id = form.dataset.id;
+  const btn = form.querySelector("button[type=submit]");
+  btn.disabled = true;
+  try {
+    const patch = { text, editedAt: Date.now() };
+    await store.updateComment(id, patch);
+    Object.assign(currentComments().find((x) => x.id === id) || {}, patch);
+    editing = null;
+    renderComments();
+  } catch (e) {
+    console.error("Editing the comment failed:", e);
+    btn.disabled = false;
+    fail("We couldn't save that. Check your internet and try again.");
+  }
+}
+
+async function deleteComment(id) {
+  if (!confirm("Delete this comment? This can't be undone.")) return;
+  try {
+    await store.deleteComment(id);
+    const key = daily[modalKind].key;
+    comments[key] = currentComments().filter((x) => x.id !== id);
+    editing = null;
+    renderComments();
+    rerender();
+  } catch (e) {
+    console.error("Deleting the comment failed:", e);
+    cmSay("We couldn't delete that. Check your internet and try again.", "err");
+  }
+}
+
+async function toggleLove(id) {
+  const c = currentComments().find((x) => x.id === id);
+  if (!c || !me) return;
+  const before = c.loves || [];
+  const on = !before.includes(me.sid);
+  c.loves = on ? [...before, me.sid] : before.filter((s) => s !== me.sid);
+  justLoved = on ? id : null;
+  renderComments();
+  justLoved = null;
+  try {
+    await store.toggleLove(id, me.sid, on);
+  } catch (e) {
+    console.error("Love failed:", e);
+    c.loves = before;
+    renderComments();
+    cmSay("We couldn't save that. Check your internet and try again.", "err");
+  }
 }
 
 function openModal(kind) {
   modalKind = kind;
+  editing = null;
   markSeen(daily[kind].key);
   document.querySelector(`.daily.${kind} .new`)?.remove();
   $modal.innerHTML = modalHTML(kind);
@@ -381,7 +481,7 @@ async function onComment(form) {
   btn.disabled = true;
   try {
     const p = prof(me.sid, me.nickname);
-    await store.addComment({ kind: modalKind, key: daily[modalKind].key, sid: me.sid, name: p.name, text, createdAt: Date.now() });
+    await store.addComment({ kind: modalKind, key: daily[modalKind].key, sid: me.sid, name: p.name, text, createdAt: Date.now(), uid: store.uid() });
     form.elements.text.value = "";
     document.getElementById("cmCount").textContent = `0 / ${MAX_COMMENT}`;
     say("Thanks for sharing!", "ok");
@@ -878,6 +978,15 @@ document.addEventListener("click", async (e) => {
     play(Number(el.dataset.id), el);
   } else if (act === "open") {
     openModal(el.dataset.kind);
+  } else if (act === "cm-love") {
+    toggleLove(el.dataset.id);
+  } else if (act === "cm-edit") {
+    startEdit(el.dataset.id);
+  } else if (act === "cm-cancel") {
+    editing = null;
+    renderComments();
+  } else if (act === "cm-delete") {
+    deleteComment(el.dataset.id);
   } else if (act === "close-modal") {
     $modal.close();
   } else if (act === "reset-demo") {
@@ -895,16 +1004,22 @@ document.addEventListener("submit", (e) => {
   if (e.target.id === "quizForm") onSubmitQuiz(e.target);
   if (e.target.id === "profileForm") onSaveProfile(e.target);
   if (e.target.id === "commentForm") onComment(e.target);
+  if (e.target.classList.contains("cm-edit")) saveEdit(e.target);
 });
 $modal.addEventListener("click", (e) => {
   if (e.target === $modal) $modal.close();
 });
 $modal.addEventListener("close", () => {
   modalKind = null;
+  editing = null;
 });
 document.addEventListener("visibilitychange", () => !document.hidden && checkNewDay());
 setInterval(checkNewDay, 60000);
 document.addEventListener("input", (e) => {
+  if (e.target.id === "editText" && editing) {
+    editing.text = e.target.value;
+    document.getElementById("editMsg").hidden = true;
+  }
   if (e.target.closest("#commentForm")) {
     document.getElementById("cmCount").textContent = `${e.target.value.length} / ${MAX_COMMENT}`;
     document.getElementById("cmMsg").hidden = true;

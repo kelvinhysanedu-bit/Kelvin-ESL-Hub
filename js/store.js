@@ -60,10 +60,34 @@ function demoStore() {
       save();
       notify("comments");
     },
+    async updateComment(id, patch) {
+      if (!db.comments?.[id]) throw { code: "not-found" };
+      db.comments[id] = { ...db.comments[id], ...patch };
+      save();
+      notify("comments");
+    },
     async deleteComment(id) {
       delete (db.comments || {})[id];
       save();
       notify("comments");
+    },
+    async toggleLove(id, sid, on) {
+      const c = db.comments?.[id];
+      if (!c) throw { code: "not-found" };
+      const set = new Set(c.loves || []);
+      on ? set.add(sid) : set.delete(sid);
+      c.loves = [...set];
+      save();
+      notify("comments");
+    },
+    uid() {
+      try {
+        let u = localStorage.getItem("eslhub.demo.uid");
+        if (!u) localStorage.setItem("eslhub.demo.uid", (u = "demo-" + Math.random().toString(36).slice(2, 10)));
+        return u;
+      } catch {
+        return "demo-device";
+      }
     },
 
     async findStudent(sid) {
@@ -186,7 +210,10 @@ async function firebaseStore(admin) {
     onComments: (key, cb) => fs.onSnapshot(fs.query(col("comments"), fs.where("key", "==", key)), (s) => cb(rows(s)), fail),
     onRecentComments: (cb) => fs.onSnapshot(fs.query(col("comments"), fs.orderBy("createdAt", "desc"), fs.limit(150)), (s) => cb(rows(s)), fail),
     addComment: (c) => fs.addDoc(col("comments"), c),
+    updateComment: (id, patch) => fs.updateDoc(fs.doc(db, "comments", id), patch),
     deleteComment: (id) => fs.deleteDoc(fs.doc(db, "comments", id)),
+    toggleLove: (id, sid, on) => fs.updateDoc(fs.doc(db, "comments", id), { loves: on ? fs.arrayUnion(sid) : fs.arrayRemove(sid) }),
+    uid: () => auth.currentUser?.uid || "",
 
     async findStudent(sid) {
       const s = await fs.getDoc(fs.doc(db, "students", sid));

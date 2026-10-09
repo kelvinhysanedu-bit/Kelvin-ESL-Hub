@@ -7,7 +7,8 @@ A live weekly-quiz dashboard for B1 to C1 adult learners. Students create a prof
 - **Idiom of the day** changes by itself at midnight (the student's local time). 43 idioms are ready, so it runs for 43 days and then starts again.
 - **Quote of the week** changes every Monday. 14 quotes are ready (14 weeks), then it starts again.
 - Both sit in the right-hand column, below the next quiz. Each one has a simple meaning and an example sentence. Tapping the card opens a pop-up with a question to spark ideas and a space for students to share. Comments are tied to that day or week, so each new idiom starts a fresh conversation.
-- You can remove comments on the teacher page, under **Idioms & quotes**. That tab also shows the next 31 idioms and the next 8 quotes.
+- Students can **edit or delete their own comments**, and tap a heart to **love** other students' comments (hover a heart to see who loved it). Editing and deleting work from the device used to post the comment, which keeps other students from changing it. Comments posted before this feature existed can only be removed by the teacher.
+- You can remove any comment on the teacher page, under **Idioms & quotes**. That tab also shows the next 31 idioms and the next 8 quotes.
 - To preview another day, add `?date=2026-11-20` to the student page address.
 - To add your own, add a line to `IDIOMS` or `QUOTES` in `js/content.js` (the format is the same as the lines already there). Quotes marked "attributed" are widely credited to that person but not firmly documented.
 
