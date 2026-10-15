@@ -28,7 +28,7 @@ Don't double-click `index.html` or `admin.html` directly. Browsers block the pag
 - **Create a profile** with a class code, a username, a 4-digit PIN, a leaderboard name and a level (B1, B2, C1).
 - **Take the weekly quiz** at any time, as many times as they like. Each attempt is saved and counted.
 - **Choose which attempt counts.** The leaderboard shows a student's first try. If they have taken a quiz two or more times, **Profile > My quizzes** lets them choose a different attempt with **Use this score**. They can change it back at any time. Nothing about this appears on the dashboard or the result screen. Students who never choose stay on their first try.
-- **See the leaderboard** live: rank, name, level, a title for their strongest area, a bar for each of the eight areas, and total points. Filter by week, all time, or level.
+- **See the leaderboard** live: rank, name, level, a title for their strongest area, a bar for each of the eight areas, and total points. There is a tab for each week (newest first) plus **All time**, and a level filter. When a new quiz is opened, it becomes the top quiz card and the leaderboard switches to its tab automatically. An older quiz that is still open appears below it as a small "Still open" card. Set it to **Closed** to remove that card; its tab and scores stay.
 - **Edit their profile**: name on the leaderboard, level, colour and picture. The username they sign in with stays the same.
 - **Review every quiz they've taken**: the right answer, their answer, and the "Why" you wrote, with the reading text or listening transcript. Open and closed quizzes can be reviewed.
 

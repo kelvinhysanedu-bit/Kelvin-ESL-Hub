@@ -23,6 +23,7 @@ let activeQuiz = null;
 let shown = null;
 let lbMode = "week";
 let lbQuizId = null;
+let lbNewest = null;
 let lbLevel = "";
 let warned = false;
 let reviewAll = false;
@@ -213,36 +214,64 @@ function heroCard(quiz, i) {
   </article>`;
 }
 
+/* Every week the student can see: all open and closed quizzes, plus any older week that has results. Newest first. */
 function weeksList(all) {
   const m = new Map();
+  quizzes.forEach((q) => m.set(q.id, { id: q.id, title: q.title, date: q.date || "", status: q.status, t: q.createdAt || 0 }));
   all.forEach((r) => {
-    if (!m.has(r.quizId)) m.set(r.quizId, { id: r.quizId, title: r.quizTitle, date: r.quizDate || "", t: r.takenAt });
+    if (!m.has(r.quizId)) m.set(r.quizId, { id: r.quizId, title: r.quizTitle, date: r.quizDate || "", status: "archived", t: r.takenAt || 0 });
   });
   return [...m.values()].sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.t - a.t);
 }
 
+const weekLabel = (w) => {
+  const m = /^\s*week\s*(\d+)/i.exec(w.title || "");
+  return m ? "Week " + m[1] : String(w.title || "Quiz").slice(0, 18);
+};
+
 function leaderboardCard(idx) {
   const all = decorated();
   const weeks = weeksList(all);
-  if (!weeks.find((w) => w.id === lbQuizId)) lbQuizId = (quizzes.find((q) => q.status === "open" && weeks.some((w) => w.id === q.id)) || weeks[0] || {}).id;
+  // The newest open quiz is the priority: when a new one appears, the board switches to it.
+  const newest = (weeks.find((w) => w.status === "open") || weeks[0] || {}).id;
+  if (newest && newest !== lbNewest) {
+    lbNewest = newest;
+    lbQuizId = newest;
+    lbMode = "week";
+  } else if (!weeks.find((w) => w.id === lbQuizId)) lbQuizId = newest;
   const levels = LEVELS.filter((l) => all.some((r) => r.level === l));
   if (lbLevel && !levels.includes(lbLevel)) lbLevel = "";
   let subset = lbMode === "all" ? all : all.filter((r) => r.quizId === lbQuizId);
   if (lbLevel) subset = subset.filter((r) => r.level === lbLevel);
   const rows = buildBoard(subset);
+  const current = weeks.find((w) => w.id === lbQuizId);
+  const openQuiz = current && current.status === "open" ? quizById(current.id) : null;
+
+  const tabs =
+    weeks
+      .map(
+        (w) => `<button class="wtab" data-act="lb-week" data-id="${esc(w.id)}" aria-pressed="${lbMode === "week" && w.id === lbQuizId}" title="${esc(w.title)}">${esc(weekLabel(w))}${w.status === "open" ? '<i class="wdot" title="Open now"></i>' : ""}</button>`
+      )
+      .join("") + `<button class="wtab all" data-act="lb-all" aria-pressed="${lbMode === "all"}">All time</button>`;
 
   const head = `<div class="card-head">
     <div><h2>Leaderboard</h2><p class="sub"><span class="live">Live</span> &nbsp;Ranked by points. Tags show each player's strongest area.</p></div>
     <div class="lb-tools">
-      <div class="toggle" role="group" aria-label="Leaderboard range">
-        <button data-act="lb" data-mode="week" aria-pressed="${lbMode === "week"}">This week</button>
-        <button data-act="lb" data-mode="all" aria-pressed="${lbMode === "all"}">All time</button>
-      </div>
-      ${lbMode === "week" && weeks.length > 1 ? `<select class="compact" id="weekSelect" aria-label="Choose week">${weeks.map((w) => `<option value="${esc(w.id)}" ${w.id === lbQuizId ? "selected" : ""}>${esc(w.title)}</option>`).join("")}</select>` : ""}
       ${levels.length ? `<select class="compact" id="levelSelect" aria-label="Filter by level"><option value="">All levels</option>${levels.map((l) => `<option ${l === lbLevel ? "selected" : ""}>${l}</option>`).join("")}</select>` : ""}
-    </div></div>`;
+    </div></div>
+    <div class="week-tabs" role="group" aria-label="Choose a week">${tabs}</div>
+    <p class="wk-line">${
+      lbMode === "all"
+        ? "Points from every week added together."
+        : current
+        ? `${esc(current.title)}${current.date ? " &middot; " + esc(fmtDate(current.date)) : ""} &middot; ${rows.length} ${rows.length === 1 ? "player" : "players"}`
+        : ""
+    }</p>`;
 
-  if (!rows.length) return `<section class="card rise" style="--i:${idx}">${head}<p class="empty">Nobody has finished a quiz yet. Be the first on the board!</p></section>`;
+  if (!rows.length) {
+    const takeIt = openQuiz && lbMode === "week" ? `<p style="text-align:center"><button class="btn" data-act="start" data-id="${esc(openQuiz.id)}">Take ${esc(weekLabel(current))}</button></p>` : "";
+    return `<section class="card rise" style="--i:${idx}">${head}<p class="empty">${lbMode === "week" && current ? `Nobody has finished ${esc(weekLabel(current))} yet. Be the first on the board!` : "Nobody has finished a quiz yet. Be the first on the board!"}</p>${takeIt}</section>`;
+  }
 
   const legend = `<div class="legend" aria-hidden="true">${SKILLS.map((s) => `<span><i class="dot" style="--c:${skillVar(s.id)}"></i><b>${s.short}</b> ${esc(s.name)}</span>`).join("")}</div>`;
   const list = rows
@@ -288,10 +317,22 @@ function railCards() {
 function homeView() {
   const open = quizzes.filter((q) => q.status === "open").sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
   const hero = open.length
-    ? open.map((q, i) => heroCard(q, i)).join("")
+    ? heroCard(open[0], 0) + open.slice(1).map((q, i) => compactQuizCard(q, i + 1)).join("")
     : `<article class="card hero rise" style="--i:0"><div class="label">This week's quiz</div><h2>No quiz is open right now</h2><p class="sub">Check the next quiz date on the right. You can review your past quizzes in your profile.</p></article>`;
   const idx = open.length || 1;
   return `<div class="dash"><div class="stack">${hero}${leaderboardCard(idx)}${padletCard(idx + 1)}</div><aside class="stack">${railCards()}</aside></div>`;
+}
+
+/* An older quiz that is still open sits below the newest one as a small card. */
+function compactQuizCard(quiz, i) {
+  const attempts = myAttempts(quiz.id);
+  const last = attempts[attempts.length - 1];
+  return `<article class="card quiz-compact rise" style="--i:${i}">
+    <div><div class="label">Still open</div><h3>${esc(quiz.title)}</h3>
+      <div class="sub">${quiz.questions.length} questions${quiz.date ? " &middot; " + esc(fmtDate(quiz.date)) : ""}${attempts.length ? ` &middot; you've taken it ${attempts.length} ${attempts.length === 1 ? "time" : "times"}` : ""}</div></div>
+    <div class="actions"><button class="btn ghost small" data-act="start" data-id="${esc(quiz.id)}">${last ? "Take it again" : "Take this quiz"}</button>
+      ${last ? `<button class="btn ghost small" data-act="result" data-id="${esc(quiz.id)}">Latest result</button>` : ""}</div>
+  </article>`;
 }
 
 function padletCard(i) {
@@ -968,8 +1009,12 @@ document.addEventListener("click", async (e) => {
     render(false);
   } else if (act === "home") {
     go("home");
-  } else if (act === "lb") {
-    lbMode = el.dataset.mode;
+  } else if (act === "lb-week") {
+    lbMode = "week";
+    lbQuizId = el.dataset.id;
+    render(false);
+  } else if (act === "lb-all") {
+    lbMode = "all";
     render(false);
   } else if (act === "rv") {
     reviewAll = el.dataset.all === "1";
@@ -1028,10 +1073,6 @@ document.addEventListener("input", (e) => {
   if (e.target.closest("#profileForm")) updatePreview(e.target.closest("#profileForm"));
 });
 document.addEventListener("change", (e) => {
-  if (e.target.id === "weekSelect") {
-    lbQuizId = e.target.value;
-    render(false);
-  }
   if (e.target.id === "levelSelect") {
     lbLevel = e.target.value;
     render(false);
