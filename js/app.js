@@ -1,5 +1,5 @@
 import { createStore } from "./store.js";
-import { padletEmbedUrl } from "./config.js";
+import { padletEmbedUrl, writingChallenge } from "./config.js";
 import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor, attemptOf, effectiveResults, pickedAttempt } from "./logic.js";
 import { avatar, glyphIcon, skillVar, countUp, captureRects, playFlip, brandHTML, timeAgo, RM } from "./ui.js";
 import { idiomFor, quoteFor, today, isPreviewDate, msToNextDay, formatCountdown } from "./content.js";
@@ -320,7 +320,7 @@ function homeView() {
     ? heroCard(open[0], 0) + open.slice(1).map((q, i) => compactQuizCard(q, i + 1)).join("")
     : `<article class="card hero rise" style="--i:0"><div class="label">This week's quiz</div><h2>No quiz is open right now</h2><p class="sub">Check the next quiz date on the right. You can review your past quizzes in your profile.</p></article>`;
   const idx = open.length || 1;
-  return `<div class="dash"><div class="stack">${hero}${leaderboardCard(idx)}${padletCard(idx + 1)}</div><aside class="stack">${railCards()}</aside></div>`;
+  return `<div class="dash"><div class="stack">${hero}${leaderboardCard(idx)}${padletCard(idx + 1)}${writingCard(idx + 2)}</div><aside class="stack">${railCards()}</aside></div>`;
 }
 
 /* An older quiz that is still open sits below the newest one as a small card. */
@@ -335,12 +335,31 @@ function compactQuizCard(quiz, i) {
   </article>`;
 }
 
+function embedCard(i, { label = "", title, sub, url }) {
+  return `<section class="card rise" style="--i:${i}">
+    <div class="card-head"><div>${label ? `<div class="label">${label}</div>` : ""}<h2>${esc(title)}</h2><p class="sub">${esc(sub)}</p></div></div>
+    <div class="padlet-embed"><iframe src="${esc(url)}" title="${esc(title)}" loading="lazy" frameborder="0"></iframe></div>
+  </section>`;
+}
+
 function padletCard(i) {
   if (!padletEmbedUrl) return "";
-  return `<section class="card rise" style="--i:${i}">
-    <div class="card-head"><div><h2>Reflection board</h2><p class="sub">Reflect on your English journey so far. Share what you've learned, what has been difficult, and what you're proud of.</p></div></div>
-    <div class="padlet-embed"><iframe src="${esc(padletEmbedUrl)}" title="Reflection board" loading="lazy" frameborder="0"></iframe></div>
-  </section>`;
+  return embedCard(i, {
+    title: "Reflection board",
+    sub: "Reflect on your English journey so far. Share what you've learned, what has been difficult, and what you're proud of.",
+    url: padletEmbedUrl,
+  });
+}
+
+/* A temporary board, for example for a writing challenge. Set writingChallenge to null in config.js to remove it. */
+function writingCard(i) {
+  if (!writingChallenge || !writingChallenge.embedUrl) return "";
+  return embedCard(i, {
+    label: `Temporary board${writingChallenge.date ? " &middot; " + esc(fmtDate(writingChallenge.date)) : ""}`,
+    title: writingChallenge.title || "Writing challenge",
+    sub: writingChallenge.description || "",
+    url: writingChallenge.embedUrl,
+  });
 }
 
 /* ------------------------------------------- idiom of the day, quote of the week */
