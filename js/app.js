@@ -112,73 +112,159 @@ function topbar() {
 
 /* ---------------------------------------------------------------- join */
 
+/* The class code comes from the link (?class=code) or from this device's last sign-in, so most students never type it. */
+const CLASS_KEY = "eslhub.class";
+const RECENT_KEY = "eslhub.recent";
+const MAX_SLOTS = 12;
+const urlClass = slug(new URLSearchParams(location.search).get("class") || "");
+let codeOpen = false;
+
+const savedClass = () => {
+  try {
+    return localStorage.getItem(CLASS_KEY) || "";
+  } catch {
+    return "";
+  }
+};
+const knownClass = () => urlClass || savedClass();
+const getRecent = () => {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+  } catch {
+    return [];
+  }
+};
+function rememberLogin(code, login) {
+  try {
+    localStorage.setItem(CLASS_KEY, slug(code));
+    const list = [login, ...getRecent().filter((x) => x.toLowerCase() !== login.toLowerCase())].slice(0, 5);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+  } catch {}
+}
+
+/* Two students may type the same name. The sign-in id gets a number (amira, amira-2, ...) and the PIN tells them apart. */
+const internalName = (base, k) => (k === 1 ? base : base.slice(0, 16 - `-${k}`.length) + "-" + k);
+const slotNames = (typed) => {
+  const base = slug(typed).slice(0, 16);
+  return Array.from({ length: MAX_SLOTS }, (_, i) => internalName(base, i + 1));
+};
+
+async function signUp(code, typed, pin) {
+  const slots = slotNames(typed);
+  const existing = await Promise.all(slots.map((u) => store.findStudent(makeSid(code, u))));
+  for (let i = 0; i < slots.length; i++) {
+    if (existing[i] && existing[i].pinHash === (await hashPin(code, slots[i], pin))) throw { code: "pin-taken" };
+  }
+  const free = slots.find((_, i) => !existing[i]);
+  if (!free) throw { code: "full" };
+  const sid = makeSid(code, free);
+  const profile = { sid, name: typed, color: nameColor(typed), glyph: 0, level: "", updatedAt: Date.now() };
+  await store.createStudent({ sid, nickname: free, classCode: slug(code), pinHash: await hashPin(code, free, pin), createdAt: Date.now() }, profile);
+  profiles.set(sid, profile);
+  return { sid, nickname: free };
+}
+
+/* A student can sign in with the name they joined with, or with the name currently shown on the leaderboard. */
+async function signIn(code, typed, pin) {
+  const prefix = slug(code) + "_";
+  const wanted = typed.toLowerCase();
+  const bySlot = slotNames(typed).map((u) => makeSid(code, u));
+  const byProfile = [...profiles.values()]
+    .filter((p) => p.sid && p.sid.startsWith(prefix) && String(p.name || "").trim().toLowerCase() === wanted)
+    .map((p) => p.sid);
+  const sids = [...new Set([...bySlot, ...byProfile])];
+  const found = await Promise.all(
+    sids.map(async (sid) => {
+      const s = await store.findStudent(sid);
+      return s && s.pinHash === (await hashPin(code, s.nickname, pin)) ? { sid, nickname: s.nickname } : null;
+    })
+  );
+  const hits = found.filter(Boolean);
+  if (!hits.length) throw { code: "no-match" };
+  if (hits.length > 1) throw { code: "ambiguous" };
+  const hit = hits[0];
+  if (!(await store.getProfile(hit.sid))) {
+    const profile = { sid: hit.sid, name: typed, color: nameColor(typed), glyph: 0, level: "", updatedAt: Date.now() };
+    await store.saveProfile(profile);
+    profiles.set(hit.sid, profile);
+  }
+  return hit;
+}
+
 function joinView() {
   const isNew = joinTab === "new";
+  const known = knownClass();
+  const showCode = !known || codeOpen;
+  const recent = getRecent();
   return `<div class="join card rise" style="--i:0">
-    <h2>${isNew ? "Create your profile" : "Welcome back"}</h2>
-    <p class="sub">No email needed. Use your first name or a nickname.</p>
+    <h2>${isNew ? "Join the league" : "Welcome back"}</h2>
+    <p class="sub">${isNew ? "No email needed. Just your name and a 4-digit PIN." : "Type your name and PIN to sign in."}</p>
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-act="tab" data-tab="new" aria-selected="${isNew}">I'm new</button>
       <button class="tab" role="tab" data-act="tab" data-tab="back" aria-selected="${!isNew}">I've played before</button>
     </div>
     <div class="msg err" id="joinMsg" hidden></div>
     <form id="joinForm" autocomplete="off">
-      <label class="field"><span>Class code</span><input type="text" name="code" required autocapitalize="off" spellcheck="false"><small>Your teacher will give you this.</small></label>
-      <label class="field"><span>Username</span><input type="text" name="user" required maxlength="16" autocapitalize="off" spellcheck="false">
-        <small>${isNew ? "2 to 16 letters or numbers, no spaces. You use it to sign back in." : "The username you chose when you joined."}</small></label>
-      <label class="field"><span>${isNew ? "Choose a 4-digit PIN" : "Your 4-digit PIN"}</span>
-        <input type="password" name="pin" required inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="off"></label>
+      <p class="code-known" id="codeKnown" ${showCode ? "hidden" : ""}>Class code: <strong>${esc(known)}</strong> <button type="button" class="link-btn" data-act="change-code">Change</button></p>
+      <label class="field" id="codeField" ${showCode ? "" : "hidden"}><span>Class code</span><input type="text" name="code" value="${esc(known)}" required autocapitalize="off" spellcheck="false"><small>Your teacher will give you this.</small></label>
       ${
-        isNew
-          ? `<label class="field"><span>Name on the leaderboard</span><input type="text" name="name" maxlength="24" spellcheck="false"><small>Optional. You can change it any time in your profile.</small></label>
-             <label class="field"><span>Your level</span><select name="level"><option value="">Not sure yet</option>${LEVELS.map((l) => `<option>${l}</option>`).join("")}</select></label>`
+        !isNew && recent.length
+          ? `<div class="field"><span>Used on this device before</span><div class="recent">${recent.map((n) => `<button type="button" class="chip-btn" data-act="recent" data-name="${esc(n)}">${esc(n)}</button>`).join("")}</div></div>`
           : ""
       }
-      <button class="btn" type="submit">${isNew ? "Join the league" : "Sign in"}</button>
+      <label class="field"><span>Your name</span><input type="text" name="user" required maxlength="24" autocapitalize="words" spellcheck="false">
+        <small>${isNew ? "Your first name or a nickname. The leaderboard shows it too, and you can change it any time in your profile." : "The name you joined with, or the name now shown on the leaderboard."}</small></label>
+      <div class="field"><label for="pinInput">${isNew ? "Choose a 4-digit PIN" : "Your 4-digit PIN"}</label>
+        <span class="pin-wrap"><input id="pinInput" type="password" name="pin" required inputmode="numeric" maxlength="4" pattern="[0-9]{4}" autocomplete="off"><button type="button" class="eye" data-act="toggle-pin" aria-pressed="false">Show</button></span>
+        <small>${isNew ? "Remember it. You need it to sign back in." : "Forgot your PIN? Ask your teacher to set a new one."}</small></div>
+      <button class="btn" type="submit">${isNew ? "Join" : "Sign in"}</button>
     </form>
   </div>`;
+}
+
+function showCodeField() {
+  codeOpen = true;
+  document.getElementById("codeKnown").hidden = true;
+  document.getElementById("codeField").hidden = false;
+  document.querySelector("#joinForm [name=code]").focus();
 }
 
 async function onJoin(form) {
   const f = new FormData(form);
   const code = String(f.get("code")).trim();
-  const user = String(f.get("user")).trim();
+  const typed = String(f.get("user")).trim().replace(/\s+/g, " ");
   const pin = String(f.get("pin")).trim();
   const msg = document.getElementById("joinMsg");
   const say = (t) => {
     msg.hidden = false;
     msg.textContent = t;
   };
-  if (!slug(code)) return say("Type the class code from your teacher.");
-  if (!/^[\p{L}\p{N}_-]{2,16}$/u.test(user) || slug(user).length < 2) return say("Your username needs 2 to 16 letters or numbers, with no spaces.");
+  if (!slug(code)) {
+    showCodeField();
+    return say("Type the class code from your teacher.");
+  }
+  if (!/^[\p{L}\p{N} '._-]{2,24}$/u.test(typed) || slug(typed).length < 2) return say("Please type your name with 2 to 24 English letters or numbers. You can change how it looks later in your profile.");
   if (!/^\d{4}$/.test(pin)) return say("Your PIN must be exactly 4 numbers.");
 
   const btn = form.querySelector("button[type=submit]");
   btn.disabled = true;
   try {
-    const sid = makeSid(code, user);
-    const pinHash = await hashPin(code, user, pin);
-    if (joinTab === "new") {
-      const name = String(f.get("name") || "").trim().replace(/\s+/g, " ") || user;
-      if (!/^[\p{L}\p{N} '._-]{2,24}$/u.test(name)) return say("Your leaderboard name needs 2 to 24 letters or numbers.");
-      const profile = { sid, name, color: nameColor(name), glyph: 0, level: String(f.get("level") || ""), updatedAt: Date.now() };
-      await store.createStudent({ sid, nickname: user, classCode: slug(code), pinHash, createdAt: Date.now() }, profile);
-      profiles.set(sid, profile);
-    } else {
-      const s = await store.findStudent(sid);
-      if (!s || s.pinHash !== pinHash) return say("We can't find that username with that PIN. Check the class code, username and PIN.");
-      if (!(await store.getProfile(sid))) {
-        const profile = { sid, name: user, color: nameColor(user), glyph: 0, level: "", updatedAt: Date.now() };
-        await store.saveProfile(profile);
-        profiles.set(sid, profile);
-      }
-    }
-    me = { sid, nickname: user };
+    const acct = joinTab === "new" ? await signUp(code, typed, pin) : await signIn(code, typed, pin);
+    me = { sid: acct.sid, nickname: acct.nickname, login: typed };
     saveMe(me);
+    rememberLogin(code, typed);
     go("home");
   } catch (e) {
-    if (e.code === "exists") say("That username is taken. Pick another, or choose \"I've played before\" if it's yours.");
-    else if (e.code === "bad-class-code") say("That class code isn't right. Ask your teacher.");
+    if (e.code === "pin-taken") say("Someone with the same name already uses that PIN. Please choose a different PIN.");
+    else if (e.code === "ambiguous") say("Two students use that name and PIN, so we can't tell who you are. Please ask your teacher to set a new PIN for you.");
+    else if (e.code === "no-match") say("We can't find that name with that PIN. Check the spelling, the PIN and the class code. Forgot your PIN? Ask your teacher.");
+    else if (e.code === "bad-class-code") {
+      try {
+        localStorage.removeItem(CLASS_KEY);
+      } catch {}
+      showCodeField();
+      say("That class code isn't right. Check it, or ask your teacher.");
+    } else if (e.code === "full") say("Too many students share that name. Please add a word to your name, for example your surname.");
     else say("Something went wrong. Check your internet and try again.");
   } finally {
     btn.disabled = false;
@@ -884,11 +970,11 @@ function profileView() {
     .join("");
   return `<div class="profile-grid">
     <section class="card rise" style="--i:0"><h2>Your profile</h2>
-      <p class="sub">Sign-in username: <strong>${esc(me.nickname)}</strong> (this stays the same).</p>
+      <p class="sub">You can change your name below at any time. To sign in again, use your PIN with either this new name or the name you joined with (<strong>${esc(me.login || me.nickname)}</strong>).</p>
       ${profileMsg ? `<div class="msg ${profileMsg.kind}" role="status" style="margin-top:14px">${esc(profileMsg.text)}</div>` : ""}
       <form id="profileForm" autocomplete="off" style="margin-top:16px">
         <div class="preview" id="pvw">${previewHTML(p.name, p.color, p.glyph, p.level)}</div>
-        <label class="field"><span>Name on the leaderboard</span><input type="text" name="name" value="${esc(p.name)}" maxlength="24" required></label>
+        <label class="field"><span>Your name</span><input type="text" name="name" value="${esc(p.name)}" maxlength="24" required><small>Shown on the leaderboard and in comments. Any letters are fine.</small></label>
         <label class="field"><span>Level</span><select name="level"><option value="">Not set</option>${LEVELS.map((l) => `<option ${p.level === l ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         ${pickerHTML(p)}
         <div class="actions"><button class="btn" type="submit">Save profile</button><button class="link-btn" type="button" data-act="signout">Sign out</button></div>
@@ -986,7 +1072,19 @@ document.addEventListener("click", async (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (el.tagName === "A") e.preventDefault();
-  if (act === "tab") {
+  if (act === "toggle-pin") {
+    const input = el.parentElement.querySelector("input");
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    el.textContent = show ? "Hide" : "Show";
+    el.setAttribute("aria-pressed", String(show));
+  } else if (act === "change-code") {
+    showCodeField();
+  } else if (act === "recent") {
+    const form = document.getElementById("joinForm");
+    form.elements.user.value = el.dataset.name;
+    form.elements.pin.focus();
+  } else if (act === "tab") {
     joinTab = el.dataset.tab;
     render(true);
   } else if (act === "nav") {
@@ -1109,6 +1207,7 @@ document.addEventListener("change", (e) => {
     return;
   }
   if (store.mode === "demo") renderDemoBar();
+  if (!me && getRecent().length) joinTab = "back";
   const waits = [
     subscribeDaily(),
     new Promise((res) => {

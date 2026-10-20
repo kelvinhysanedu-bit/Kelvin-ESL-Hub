@@ -160,6 +160,16 @@ a { color: inherit; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .field > span { font-size: 13px; font-weight: 600; }
 .field small { color: var(--muted); font-size: 12.5px; }
+.field > label { font-size: 13px; font-weight: 600; }
+.pin-wrap { position: relative; display: block; }
+.pin-wrap input { padding-right: 64px; }
+.eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--accent); font-weight: 600; font-size: 13px; cursor: pointer; padding: 6px 8px; border-radius: 6px; }
+.eye:hover { background: var(--tint); }
+.recent { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-btn { border: 1px solid var(--line); background: var(--soft); border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.chip-btn:hover { border-color: var(--accent); background: var(--tint); }
+.code-known { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
+.code-known strong { color: var(--ink); }
 input[type="text"], input[type="password"], input[type="date"], select, textarea {
   width: 100%; background: var(--soft); border: 1.5px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--ink);
 }
@@ -363,6 +373,10 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; white-space: nowrap; }
 th { font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); border-top: 0; }
 .table-wrap { overflow-x: auto; }
+.share { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
+.share h3 { font-size: 20px; }
+.qr { margin-top: 14px; display: inline-block; padding: 12px; background: #fff; border-radius: 8px; border: 1px solid var(--line); }
+.qr img, .qr canvas { display: block; }
 .section-edit { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
 .help { margin: 0 0 14px; font-size: 14px; }
 .help summary { cursor: pointer; font-weight: 600; color: var(--accent); }

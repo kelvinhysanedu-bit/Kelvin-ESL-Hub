@@ -162,6 +162,12 @@ function demoStore() {
       save();
       notify("students");
     },
+    async setStudentPin(sid, pinHash) {
+      if (!db.students[sid]) throw { code: "not-found" };
+      db.students[sid].pinHash = pinHash;
+      save();
+      notify("students");
+    },
     async resetDemo() {
       db = demoSeed();
       save();
@@ -262,6 +268,7 @@ async function firebaseStore(admin) {
     setClassCode: (code) => fs.setDoc(fs.doc(db, "private", "class"), { classCode: code }),
     deleteResult: (id) => fs.deleteDoc(fs.doc(db, "results", id)),
     removeStudent: (sid) => fs.deleteDoc(fs.doc(db, "students", sid)),
+    setStudentPin: (sid, pinHash) => fs.updateDoc(fs.doc(db, "students", sid), { pinHash }),
     async resetDemo() {},
   };
 }

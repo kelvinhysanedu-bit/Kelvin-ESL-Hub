@@ -25,11 +25,11 @@ Don't double-click `index.html` or `admin.html` directly. Browsers block the pag
 
 ## What students can do
 
-- **Create a profile** with a class code, a username, a 4-digit PIN, a leaderboard name and a level (B1, B2, C1).
+- **Join with just a name and a PIN.** The teacher shares a link with the class code built in (`.../?class=yourcode`, with a QR code on the teacher page), so students never type the code. Their name is also what the leaderboard shows. Two students can use the same name: the PIN tells them apart, and if both pick the same PIN the second is asked to choose another. On a device they have used before, the sign-in screen lists their name so they only type the PIN. The PIN field has a Show/Hide button.
 - **Take the weekly quiz** at any time, as many times as they like. Each attempt is saved and counted.
 - **Choose which attempt counts.** The leaderboard shows a student's first try. If they have taken a quiz two or more times, **Profile > My quizzes** lets them choose a different attempt with **Use this score**. They can change it back at any time. Nothing about this appears on the dashboard or the result screen. Students who never choose stay on their first try.
 - **See the leaderboard** live: rank, name, level, a title for their strongest area, a bar for each of the eight areas, and total points. There is a tab for each week (newest first) plus **All time**, and a level filter. When a new quiz is opened, it becomes the top quiz card and the leaderboard switches to its tab automatically. An older quiz that is still open appears below it as a small "Still open" card. Set it to **Closed** to remove that card; its tab and scores stay.
-- **Edit their profile**: name on the leaderboard, level, colour and picture. The username they sign in with stays the same.
+- **Edit their profile** at any time: their name, level (B1, B2, C1), colour and picture. A new name shows straight away on the leaderboard and in comments, and they can sign in with either the new name or the name they joined with. If two students end up with the same name and the same PIN, the sign-in asks them to see the teacher, who can use **Set PIN**.
 - **Review every quiz they've taken**: the right answer, their answer, and the "Why" you wrote, with the reading text or listening transcript. Open and closed quizzes can be reviewed.
 
 ## Quiz areas
@@ -104,13 +104,13 @@ Answer: creativity
 ### 3. First time as teacher
 
 1. Open `/admin.html` and sign in with Google.
-2. **Class** tab: set a class code and tell your students.
+2. **Class** tab: set a class code, then share the **Student link** (or show the QR code) with your students.
 3. **Quizzes** tab: paste a quiz, choose **Open**, and save.
 4. **Announcements** tab: set the next quiz date and the extra sections.
 
 On the teacher page, **Class > Results** lists every attempt, with **On board** marking the one that counts on the leaderboard. The CSV has the same columns. To try the hub with practice data without touching the live data, add `?demo=1` to the address.
 
-If a student forgets their PIN, use **Class > Students > Reset PIN**. They sign up again with the same username and keep their results.
+If a student forgets their PIN, use **Class > Students > Set PIN** and type a new one for them. Their results and profile stay as they are. PINs are stored scrambled, so the current PIN can't be shown. **Remove** deletes a student's sign-in only; their results stay.
 
 ## How tags work
 
@@ -123,6 +123,6 @@ If a student forgets their PIN, use **Class > Students > Reset PIN**. They sign 
 This is classroom-grade, not exam-grade security.
 
 - Quiz answers are stored in the quiz so the page can mark it, and closed quizzes stay readable for review. A student who opens the browser developer tools could find the answers of an open quiz.
-- The PIN is checked in the browser. A student who knows a classmate's username could try PINs.
+- The PIN is checked in the browser. A student who knows a classmate's name could try PINs.
 - Anyone signed in can edit any profile name and picture through the browser developer tools.
 - Teacher rights depend on the one email in `firestore.rules`.

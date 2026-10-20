@@ -1,5 +1,5 @@
 import { createStore } from "./store.js";
-import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults } from "./logic.js";
+import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults, hashPin } from "./logic.js";
 import { sampleText } from "./sample.js";
 import { brandHTML, timeAgo } from "./ui.js";
 import { idiomFor, quoteFor, today, IDIOMS, QUOTES } from "./content.js";
@@ -207,6 +207,21 @@ function dailyPanel() {
 
 /* --------------------------------------------------------------- class */
 
+/* The link students use: the same page address with the class code filled in. */
+function studentLink() {
+  const u = new URL("./", location.href);
+  u.search = "";
+  u.searchParams.set("class", slug(classCode));
+  return u.href;
+}
+
+function drawQR() {
+  const el = document.getElementById("qr");
+  if (!el || !window.QRCode || !slug(classCode)) return;
+  el.innerHTML = "";
+  new window.QRCode(el, { text: studentLink(), width: 168, height: 168, correctLevel: window.QRCode.CorrectLevel.M });
+}
+
 function classPanel() {
   const quizTitle = Object.fromEntries(quizzes.map((q) => [q.id, q.title]));
   const rows = [...results].sort((a, b) => b.takenAt - a.takenAt);
@@ -218,13 +233,23 @@ function classPanel() {
       ${flashHTML()}
       <form id="codeForm" class="actions"><input type="text" id="codeInput" value="${esc(classCode)}" style="max-width:240px" aria-label="Class code" placeholder="e.g. evening-b2-2026">
         <button class="btn" type="submit">Save code</button></form>
-      <p class="sub" style="margin-top:10px">Saved as "${esc(slug(classCode) || "not set")}". Capitals and spaces don't matter.</p></section>
+      <p class="sub" style="margin-top:10px">Saved as "${esc(slug(classCode) || "not set")}". Capitals and spaces don't matter.</p>
+      ${
+        slug(classCode)
+          ? `<div class="share"><h3>Student link</h3>
+        <p class="sub">Share this link or the QR code. The class code is filled in for students, so they only type their name and a PIN.</p>
+        <div class="actions"><input type="text" readonly id="linkBox" value="${esc(studentLink())}" style="max-width:520px" aria-label="Student link" onclick="this.select()">
+          <button class="btn small" data-act="copy-link">Copy link</button></div>
+        <div id="qr" class="qr" aria-label="QR code for the student link"></div></div>`
+          : ""
+      }</section>
     <section class="card"><div class="card-head"><div><h2>Students</h2>
-      <p class="sub">If a student forgets their PIN, press <strong>Reset PIN</strong>. They sign up again with the same username and keep all their results.</p></div></div>
-      ${people.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Username</th><th>Level</th><th>Joined</th><th></th></tr></thead><tbody>
+      <p class="sub">Press <strong>Set PIN</strong> to type a new PIN for a student who forgot theirs. PINs are stored scrambled, so the current one can't be shown. <strong>Remove</strong> deletes their sign-in only, and their results stay.</p></div></div>
+      ${people.length ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Sign-in id</th><th>Level</th><th>Joined</th><th></th></tr></thead><tbody>
       ${people.map((s) => `<tr><td>${esc(nameOf(s.sid, s.nickname))}</td><td>${esc(s.nickname)}</td><td>${esc(profiles.get(s.sid)?.level || "")}</td>
         <td>${s.createdAt ? esc(new Date(s.createdAt).toLocaleDateString("en-GB")) : ""}</td>
-        <td><button class="btn danger small" data-act="reset-pin" data-sid="${esc(s.sid)}">Reset PIN</button></td></tr>`).join("")}
+        <td><div class="actions" style="flex-wrap:nowrap"><button class="btn ghost small" data-act="set-pin" data-sid="${esc(s.sid)}">Set PIN</button>
+          <button class="btn danger small" data-act="remove-student" data-sid="${esc(s.sid)}">Remove</button></div></td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty">Nobody has joined yet.</p>`}</section>
     <section class="card"><div class="card-head"><div><h2>Results</h2>
       <p class="sub">Every attempt is listed. <strong>On board</strong> marks the attempt that counts on the leaderboard: the first try, unless the student chose another. Delete an attempt to remove it.</p></div>
@@ -249,6 +274,7 @@ function render() {
     header() +
     `<nav class="admin-nav tabs" role="tablist">${tabs.map(([id, l]) => `<button class="tab" role="tab" data-act="tab" data-tab="${id}" aria-selected="${tab === id}">${l}</button>`).join("")}</nav>` +
     `<div class="stack">${tab === "quizzes" ? flashHTML() : ""}${panel}</div>`;
+  if (tab === "class") drawQR();
 }
 
 function csv() {
@@ -331,10 +357,28 @@ document.addEventListener("click", guard(async (e) => {
     draft.sections.splice(Number(el.dataset.i), 1);
     render();
   } else if (act === "csv") csv();
-  else if (act === "reset-pin") {
-    if (confirm("Reset this student's PIN? They sign up again with the same username and keep their results.")) {
+  else if (act === "copy-link") {
+    const link = studentLink();
+    try {
+      await navigator.clipboard.writeText(link);
+      say("Link copied. Paste it into your class chat.");
+    } catch {
+      document.getElementById("linkBox")?.select();
+      say("Select the link above and press Ctrl+C to copy it.", "err");
+    }
+  } else if (act === "set-pin") {
+    const s = students.find((x) => x.sid === el.dataset.sid);
+    if (!s) return;
+    const name = profiles.get(s.sid)?.name || s.nickname;
+    const pin = prompt(`New 4-digit PIN for ${name}:`);
+    if (pin === null) return;
+    if (!/^\d{4}$/.test(pin.trim())) return say("The PIN must be exactly 4 numbers.", "err");
+    await store.setStudentPin(s.sid, await hashPin(s.classCode, s.nickname, pin.trim()));
+    say(`Done. ${name} can now sign in with the name they joined with and the PIN ${pin.trim()}.`);
+  } else if (act === "remove-student") {
+    if (confirm("Remove this student's sign-in? Their results stay, but they will need to join again. To only change their PIN, use Set PIN instead.")) {
       await store.removeStudent(el.dataset.sid);
-      say("PIN reset. Ask the student to sign up again with the same username.");
+      say("Sign-in removed.");
     }
   } else if (act === "del-comment") {
     if (confirm("Delete this comment?")) {
