@@ -217,8 +217,15 @@ select.compact { width: auto; padding: 6px 10px; font-size: 13px; }
 .wdot { width: 7px; height: 7px; border-radius: 50%; background: var(--good); display: inline-block; }
 .wtab[aria-pressed="true"] .wdot { background: var(--on-accent); }
 .wk-line { margin: 4px 0 12px; font-size: 13.5px; color: var(--muted); }
-.quiz-compact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 16px 20px; }
-.quiz-compact h3 { font-size: 20px; margin: 2px 0; }
+.prev { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.prev-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 7px 0; border-top: 1px dashed var(--line); }
+.prev .label + .prev-row { border-top: 0; margin-top: 2px; }
+.prev-t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.prev-t strong { font-size: 14.5px; }
+.prev-t span { color: var(--muted); font-size: 12.5px; }
+.prev-actions { display: flex; gap: 6px; }
+.prev-actions .btn.small { padding: 3px 12px; font-size: 12.5px; }
+.prev-more summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 13px; padding: 7px 0 2px; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; font-size: 12px; color: var(--muted); }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend b { font-weight: 600; color: var(--ink); letter-spacing: 0.04em; font-size: 11px; }

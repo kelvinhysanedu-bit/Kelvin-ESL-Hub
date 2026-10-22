@@ -279,7 +279,24 @@ function skillCounts(quiz) {
   return SKILLS.filter((s) => c[s.id]).map((s) => ({ ...s, n: c[s.id] }));
 }
 
-function heroCard(quiz, i) {
+/* Earlier quizzes that are still open: one short row each, inside the main quiz card. */
+function earlierRow(q) {
+  const attempts = myAttempts(q.id);
+  const last = attempts[attempts.length - 1];
+  return `<div class="prev-row"><div class="prev-t"><strong>${esc(q.title)}</strong>
+      <span>${q.questions.length} questions &middot; ${attempts.length ? `taken ${attempts.length}&times;` : "not taken yet"}</span></div>
+    <div class="prev-actions"><button class="btn ghost small" data-act="start" data-id="${esc(q.id)}">${last ? "Take again" : "Take it"}</button>
+      ${last ? `<button class="btn ghost small" data-act="result" data-id="${esc(q.id)}">Result ${last.total}/${last.max}</button>` : ""}</div></div>`;
+}
+
+function earlierList(earlier) {
+  if (!earlier.length) return "";
+  const rest = earlier.slice(3);
+  return `<div class="prev"><div class="label">Earlier quizzes</div>${earlier.slice(0, 3).map(earlierRow).join("")}
+    ${rest.length ? `<details class="prev-more"><summary>Show ${rest.length} more</summary>${rest.map(earlierRow).join("")}</details>` : ""}</div>`;
+}
+
+function heroCard(quiz, i, earlier = []) {
   const attempts = myAttempts(quiz.id);
   const last = attempts[attempts.length - 1];
   const done = new Set(results.filter((r) => r.quizId === quiz.id).map((r) => r.sid)).size;
@@ -297,6 +314,7 @@ function heroCard(quiz, i) {
       }
       <span class="count">${done} ${done === 1 ? "player has" : "players have"} finished${attempts.length ? ` &middot; you've taken it ${attempts.length} ${attempts.length === 1 ? "time" : "times"}` : ""}</span>
     </div>
+    ${earlierList(earlier)}
   </article>`;
 }
 
@@ -403,22 +421,10 @@ function railCards() {
 function homeView() {
   const open = quizzes.filter((q) => q.status === "open").sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
   const hero = open.length
-    ? heroCard(open[0], 0) + open.slice(1).map((q, i) => compactQuizCard(q, i + 1)).join("")
+    ? heroCard(open[0], 0, open.slice(1))
     : `<article class="card hero rise" style="--i:0"><div class="label">This week's quiz</div><h2>No quiz is open right now</h2><p class="sub">Check the next quiz date on the right. You can review your past quizzes in your profile.</p></article>`;
   const idx = open.length || 1;
   return `<div class="dash"><div class="stack">${hero}${leaderboardCard(idx)}${padletCard(idx + 1)}${writingCard(idx + 2)}</div><aside class="stack">${railCards()}</aside></div>`;
-}
-
-/* An older quiz that is still open sits below the newest one as a small card. */
-function compactQuizCard(quiz, i) {
-  const attempts = myAttempts(quiz.id);
-  const last = attempts[attempts.length - 1];
-  return `<article class="card quiz-compact rise" style="--i:${i}">
-    <div><div class="label">Still open</div><h3>${esc(quiz.title)}</h3>
-      <div class="sub">${quiz.questions.length} questions${quiz.date ? " &middot; " + esc(fmtDate(quiz.date)) : ""}${attempts.length ? ` &middot; you've taken it ${attempts.length} ${attempts.length === 1 ? "time" : "times"}` : ""}</div></div>
-    <div class="actions"><button class="btn ghost small" data-act="start" data-id="${esc(quiz.id)}">${last ? "Take it again" : "Take this quiz"}</button>
-      ${last ? `<button class="btn ghost small" data-act="result" data-id="${esc(quiz.id)}">Latest result</button>` : ""}</div>
-  </article>`;
 }
 
 function embedCard(i, { label = "", title, sub, url }) {
