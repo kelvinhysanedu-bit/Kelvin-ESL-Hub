@@ -1,8 +1,9 @@
 import { createStore } from "./store.js";
-import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults, hashPin } from "./logic.js";
+import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults, hashPin, buildBoard } from "./logic.js";
 import { sampleText } from "./sample.js";
-import { brandHTML, timeAgo } from "./ui.js";
+import { brandHTML, timeAgo, avatar, skillVar } from "./ui.js";
 import { idiomFor, quoteFor, today, IDIOMS, QUOTES } from "./content.js";
+import { FORMATS, renderPoster, posterToBlob } from "./poster.js";
 
 const $app = document.getElementById("app");
 
@@ -159,6 +160,111 @@ function announcePanel() {
       <div style="margin-top:18px"><button class="btn" type="submit">Save changes</button></div></section></form>`;
 }
 
+/* -------------------------------------------------------- leaderboard */
+
+/* The same live ranked board students see, plus a full-screen "Present" mode for projecting in class. */
+const lbState = { mode: "week", quizId: null, level: "", newest: null };
+let presenting = false;
+
+const weekLabel = (w) => {
+  const m = /^\s*week\s*(\d+)/i.exec(w.title || "");
+  return m ? "Week " + m[1] : String(w.title || "Quiz").slice(0, 18);
+};
+
+function lbData() {
+  const all = effectiveResults(results, (sid) => profiles.get(sid)).map((r) => {
+    const p = profiles.get(r.sid);
+    return { ...r, nickname: p?.name || r.nickname, color: p?.color ?? 0, glyph: p?.glyph || 0, level: p?.level || "" };
+  });
+  const m = new Map();
+  quizzes.filter((q) => q.status !== "draft").forEach((q) => m.set(q.id, { id: q.id, title: q.title, date: q.date || "", status: q.status, t: q.createdAt || 0 }));
+  all.forEach((r) => {
+    if (!m.has(r.quizId)) m.set(r.quizId, { id: r.quizId, title: r.quizTitle, date: r.quizDate || "", status: "archived", t: r.takenAt || 0 });
+  });
+  const weeks = [...m.values()].sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.t - a.t);
+  const newest = (weeks.find((w) => w.status === "open") || weeks[0] || {}).id;
+  if (newest && newest !== lbState.newest) {
+    lbState.newest = newest;
+    lbState.quizId = newest;
+    lbState.mode = "week";
+  } else if (!weeks.find((w) => w.id === lbState.quizId)) lbState.quizId = newest;
+  const levels = ["B1", "B2", "C1"].filter((l) => all.some((r) => r.level === l));
+  if (lbState.level && !levels.includes(lbState.level)) lbState.level = "";
+  let subset = lbState.mode === "all" ? all : all.filter((r) => r.quizId === lbState.quizId);
+  if (lbState.level) subset = subset.filter((r) => r.level === lbState.level);
+  return { weeks, levels, rows: buildBoard(subset), current: weeks.find((w) => w.id === lbState.quizId) };
+}
+
+const cellsHTML = (bySkill) =>
+  SKILLS.map((s) => {
+    const v = bySkill[s.id];
+    return `<span class="cell" style="--c:${skillVar(s.id)};--h:${v ? v.got / v.max : 0}" title="${esc(s.name)}: ${v ? v.got + "/" + v.max : "not in this quiz"}"><i class="${v ? "" : "none"}"></i><em>${s.short}</em></span>`;
+  }).join("");
+
+function lbHeader(d, present) {
+  const tabs =
+    d.weeks
+      .map((w) => `<button class="wtab" data-act="lb-week" data-id="${esc(w.id)}" aria-pressed="${lbState.mode === "week" && w.id === lbState.quizId}" title="${esc(w.title)}">${esc(weekLabel(w))}${w.status === "open" ? '<i class="wdot" title="Open now"></i>' : ""}</button>`)
+      .join("") + `<button class="wtab all" data-act="lb-all" aria-pressed="${lbState.mode === "all"}">All time</button>`;
+  const line =
+    lbState.mode === "all"
+      ? "Points from every week added together."
+      : d.current
+      ? `${esc(d.current.title)}${d.current.date ? " &middot; " + esc(fmtDate(d.current.date)) : ""} &middot; ${d.rows.length} ${d.rows.length === 1 ? "player" : "players"}`
+      : "";
+  return `<div class="card-head"><div><h2>Leaderboard</h2><p class="sub"><span class="live">Live</span> &nbsp;The ranking students see. Each student counts once per week: their first attempt, unless they chose another.</p></div>
+    <div class="lb-tools">${
+      d.levels.length
+        ? `<select class="compact" data-lblevel aria-label="Filter by level"><option value="">All levels</option>${d.levels.map((l) => `<option ${l === lbState.level ? "selected" : ""}>${l}</option>`).join("")}</select>`
+        : ""
+    }${present ? "" : '<button class="btn small" data-act="present">Present full screen</button>'}</div></div>
+    <div class="week-tabs" role="group" aria-label="Choose a week">${tabs}</div><p class="wk-line">${line}</p>`;
+}
+
+function lbBoard(d) {
+  if (!d.rows.length) return `<p class="empty">No scores here yet.</p>`;
+  const legend = `<div class="legend" aria-hidden="true">${SKILLS.map((s) => `<span><i class="dot" style="--c:${skillVar(s.id)}"></i><b>${s.short}</b> ${esc(s.name)}</span>`).join("")}</div>`;
+  const list = d.rows
+    .map((r) => {
+      const titleTag = `<span class="tag" style="--c:${r.titleSkill ? skillVar(r.titleSkill) : "var(--muted)"}">${esc(r.title)}</span>`;
+      const crowns = r.crowns.map((id) => `<span class="tag crown" style="--c:${skillVar(id)}">&#9733; ${esc(SKILLS.find((s) => s.id === id).name)}</span>`).join("");
+      return `<li class="row ${r.rank === 1 ? "top1" : ""}"><span class="rk">${String(r.rank).padStart(2, "0")}</span>
+        <div class="who">${avatar(r.nickname, r.color, r.glyph, 36)}<div class="who-t"><div class="nm">${esc(r.nickname)}${r.level ? `<span class="lvl">${esc(r.level)}</span>` : ""}</div><div class="tg">${titleTag}${crowns}</div></div></div>
+        <div class="mt">${cellsHTML(r.bySkill)}</div>
+        <div class="sc"><b class="num">${r.total}</b><small>/ ${r.max}</small></div></li>`;
+    })
+    .join("");
+  return `${legend}<ol class="board">${list}</ol>`;
+}
+
+function leaderboardPanel() {
+  const d = lbData();
+  return `<section class="card">${lbHeader(d, false)}${lbBoard(d)}</section>`;
+}
+
+function renderPresent() {
+  const el = document.getElementById("present");
+  if (!el) return;
+  if (!presenting) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  const d = lbData();
+  el.hidden = false;
+  el.innerHTML = `<div class="present-bar"><span class="label">Tr. Kelvin's ESL Hub &middot; Weekly Quiz League</span><button class="btn ghost small" data-act="present-close">Exit (Esc)</button></div>${lbHeader(d, true)}${lbBoard(d)}`;
+}
+
+function setPresent(on) {
+  presenting = on;
+  renderPresent();
+  if (on && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+  if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+}
+
+document.addEventListener("keydown", (e) => e.key === "Escape" && presenting && setPresent(false));
+document.addEventListener("fullscreenchange", () => !document.fullscreenElement && presenting && setPresent(false));
+
 /* ------------------------------------------------- idioms, quotes, comments */
 
 const shortDate = (iso) => {
@@ -208,11 +314,175 @@ function dailyPanel() {
 /* --------------------------------------------------------------- class */
 
 /* The link students use: the same page address with the class code filled in. */
-function studentLink() {
+function studentLink(includeCode = true) {
   const u = new URL("./", location.href);
   u.search = "";
-  u.searchParams.set("class", slug(classCode));
+  if (includeCode && slug(classCode)) u.searchParams.set("class", slug(classCode));
   return u.href;
+}
+
+/* ------------------------------------------------------------- poster */
+
+let poster = null;
+const isoOfDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const dateOfIso = (iso) => {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1, 12);
+};
+const posterQuizList = () => [...quizzes].sort((a, b) => (a.status === "open" ? 0 : 1) - (b.status === "open" ? 0 : 1) || (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+
+function quizTexts(q) {
+  return { title: q.title, meta: `${q.questions.length} questions · Open now · Take it any time` };
+}
+
+function ensurePoster() {
+  const list = posterQuizList();
+  if (!list.length) return null;
+  if (!poster || !quizzes.find((q) => q.id === poster.quizId)) {
+    poster = {
+      quizId: list[0].id,
+      fmt: "portrait",
+      date: isoOfDate(today()),
+      badge: "NEW QUIZ",
+      ...quizTexts(list[0]),
+      perk: "Live leaderboard · Review your mistakes · New idiom every day",
+      showIdiom: true,
+      showQuote: true,
+      showAreas: true,
+      showLb: true,
+      lbWeek: "auto",
+      lbCount: "3",
+      showNote: true,
+      note: "Have you created your profile in our ESL Hub?",
+      includeCode: true,
+    };
+  }
+  return poster;
+}
+
+/* The leaderboard sneak peek: the best week with results (or all time), using each student's counted attempt. */
+function leaderboardPeek() {
+  const eff = effectiveResults(results, (sid) => profiles.get(sid)).map((r) => {
+    const p = profiles.get(r.sid);
+    return { ...r, nickname: p?.name || r.nickname, color: p?.color ?? 0, glyph: p?.glyph || 0, level: p?.level || "" };
+  });
+  const titles = Object.fromEntries(quizzes.map((q) => [q.id, q.title]));
+  eff.forEach((r) => (titles[r.quizId] = titles[r.quizId] || r.quizTitle));
+  let week = poster.lbWeek;
+  if (week === "auto") {
+    const byNewest = [...quizzes].sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+    week = (byNewest.find((q) => eff.some((r) => r.quizId === q.id)) || {}).id || "all";
+  }
+  const subset = week === "all" ? eff : eff.filter((r) => r.quizId === week);
+  const rows = buildBoard(subset)
+    .slice(0, Number(poster.lbCount) || 3)
+    .map((r) => ({ rank: r.rank, name: r.nickname, title: r.title, total: r.total, max: r.max, color: r.color, glyph: r.glyph, level: r.level }));
+  return { label: week === "all" ? "All time" : titles[week] || "", rows };
+}
+
+function posterData() {
+  const q = quizzes.find((x) => x.id === poster.quizId);
+  const dt = dateOfIso(poster.date);
+  const counts = {};
+  (q?.questions || []).forEach((x) => (counts[x.skill] = (counts[x.skill] || 0) + 1));
+  const link = studentLink(poster.includeCode);
+  return {
+    fmt: poster.fmt,
+    badge: poster.badge,
+    title: poster.title,
+    meta: poster.meta,
+    perk: poster.perk,
+    chips: poster.showAreas ? SKILLS.filter((s) => counts[s.id]).map((s) => ({ id: s.id, name: s.name })) : null,
+    idiom: poster.showIdiom ? idiomFor(dt).item : null,
+    quote: poster.showQuote ? quoteFor(dt).item : null,
+    lb: poster.showLb ? leaderboardPeek() : null,
+    note: poster.showNote && poster.note.trim() ? poster.note.trim() : null,
+    link,
+    linkText: link.replace(/^https?:\/\//, "").replace(/\?.*$/, "").replace(/\/$/, ""),
+  };
+}
+
+function posterPanel() {
+  const p = ensurePoster();
+  if (!p) return `<section class="card"><h2>Poster</h2><p class="empty">Upload a quiz first. The poster fills itself from it.</p></section>`;
+  const opts = (arr, cur) => arr.map(([v, l]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(l)}</option>`).join("");
+  const f = FORMATS[p.fmt];
+  return `<div class="poster-grid">
+    <section class="card poster-controls"><h2>Weekly poster</h2>
+      <p class="sub" style="margin-bottom:14px">Fills itself from the quiz, the week's quote, the day's idiom and your student link. Change anything you like, then download.</p>
+      ${flashHTML()}
+      <label class="field"><span>Quiz</span><select data-poster="quizId">${opts(posterQuizList().map((q) => [q.id, q.title + (q.status === "open" ? "" : " (" + q.status + ")")]), p.quizId)}</select></label>
+      <label class="field"><span>Poster date</span><input type="date" data-poster="date" value="${esc(p.date)}"><small>Picks that day's idiom and that week's quote.</small></label>
+      <label class="field"><span>Size</span><select data-poster="fmt">${opts(Object.entries(FORMATS).map(([k, v]) => [k, v.label]), p.fmt)}</select></label>
+      <label class="field"><span>Label</span><input type="text" data-poster="badge" value="${esc(p.badge)}" maxlength="24"></label>
+      <label class="field"><span>Title</span><input type="text" data-poster="title" value="${esc(p.title)}" maxlength="80"></label>
+      <label class="field"><span>Line under the title</span><input type="text" data-poster="meta" value="${esc(p.meta)}" maxlength="90"></label>
+      <label class="field"><span>Line at the bottom</span><input type="text" data-poster="perk" value="${esc(p.perk)}" maxlength="90"></label>
+      <label class="field"><span>Sticky note (a question for your students)</span><textarea data-poster="note" rows="2" maxlength="90" style="font-family:inherit;font-size:14px">${esc(p.note)}</textarea></label>
+      <label class="check"><input type="checkbox" data-poster="showNote" ${p.showNote ? "checked" : ""}>Show the sticky note</label>
+      <label class="check"><input type="checkbox" data-poster="showLb" ${p.showLb ? "checked" : ""}>Show the leaderboard sneak peek</label>
+      ${
+        p.showLb
+          ? `<div class="two" style="margin:0 0 6px"><label class="field"><span>Leaderboard of</span><select data-poster="lbWeek">${opts([["auto", "Latest week with results"], ["all", "All time"], ...posterQuizList().map((q) => [q.id, q.title])], p.lbWeek)}</select></label>
+          <label class="field"><span>Rows</span><select data-poster="lbCount">${opts([["3", "Top 3"], ["5", "Top 5 (needs story or A4)"]], p.lbCount)}</select></label></div>
+          <p class="sub" style="margin:0 0 10px">It shows students' names and scores. Turn it off for public posts if you prefer.</p>`
+          : ""
+      }
+      <label class="check"><input type="checkbox" data-poster="showAreas" ${p.showAreas ? "checked" : ""}>Show the areas in the quiz</label>
+      <label class="check"><input type="checkbox" data-poster="showIdiom" ${p.showIdiom ? "checked" : ""}>Show the idiom of the day</label>
+      <label class="check"><input type="checkbox" data-poster="showQuote" ${p.showQuote ? "checked" : ""}>Show the quote of the week</label>
+      <label class="check"><input type="checkbox" data-poster="includeCode" ${p.includeCode ? "checked" : ""}>Put my class code in the QR code</label>
+      <p class="sub" style="margin:2px 0 14px">Anyone who scans a code with your class code in it can join your class. If you post publicly, untick this and tell students the code separately.</p>
+      <div class="actions"><button class="btn" data-act="poster-download">Download PNG</button><button class="link-btn" data-act="poster-reset" style="color:var(--muted)">Reset the wording</button></div>
+      <div class="msg err" id="posterWarn" hidden style="margin-top:14px">The text is too long for this size. Shorten the title or untick a section.</div>
+    </section>
+    <section class="card"><div class="card-head"><div><h2>Preview</h2><p class="sub" id="posterSize">${f.w} &times; ${f.h} pixels</p></div></div>
+      <div class="poster-box" id="posterBox"><div class="poster-holder" id="posterHolder"></div></div></section></div>`;
+}
+
+function drawPoster() {
+  const box = document.getElementById("posterBox");
+  const holder = document.getElementById("posterHolder");
+  if (!box || !holder || !poster) return;
+  const f = FORMATS[poster.fmt];
+  const width = box.clientWidth || (box.parentElement && box.parentElement.clientWidth) || 520;
+  const k = Math.min(1, width / f.w);
+  box.dataset.w = String(box.clientWidth);
+  box.style.height = Math.round(f.h * k) + "px";
+  holder.style.width = f.w + "px";
+  holder.style.height = f.h + "px";
+  holder.style.transform = `scale(${k})`;
+  const tooLong = renderPoster(holder, posterData());
+  document.getElementById("posterWarn").hidden = !tooLong;
+  document.getElementById("posterSize").innerHTML = `${f.w} &times; ${f.h} pixels`;
+}
+
+async function downloadPoster() {
+  if (!window.html2canvas) return say("The download tool didn't load. Check your internet and reload the page.", "err");
+  const blob = await posterToBlob(posterData());
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `quiz-poster-${slug(poster.title) || "week"}-${poster.fmt}.png`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+function onPosterField(el) {
+  const key = el.dataset.poster;
+  if (key === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(el.value)) return;
+  poster[key] = el.type === "checkbox" ? el.checked : el.value;
+  if (key === "quizId") {
+    const q = quizzes.find((x) => x.id === el.value);
+    if (q) Object.assign(poster, quizTexts(q));
+    render();
+    return;
+  }
+  if (key === "fmt") poster.showAreas = el.value !== "square";
+  if (key === "fmt" || key === "showLb") {
+    render();
+    return;
+  }
+  drawPoster();
 }
 
 function drawQR() {
@@ -268,14 +538,33 @@ function render() {
     $app.innerHTML = header() + gate();
     return;
   }
-  const tabs = [["quizzes", "Quizzes"], ["announce", "Announcements"], ["daily", "Idioms & quotes"], ["class", "Class"]];
-  const panel = tab === "quizzes" ? quizzesPanel() : tab === "announce" ? (draft ? announcePanel() : "<p>Loading…</p>") : tab === "daily" ? dailyPanel() : classPanel();
+  const tabs = [["quizzes", "Quizzes"], ["leaderboard", "Leaderboard"], ["announce", "Announcements"], ["poster", "Poster"], ["daily", "Idioms & quotes"], ["class", "Class"]];
+  const panel =
+    tab === "quizzes"
+      ? quizzesPanel()
+      : tab === "leaderboard"
+      ? leaderboardPanel()
+      : tab === "announce"
+      ? draft ? announcePanel() : "<p>Loading…</p>"
+      : tab === "poster"
+      ? posterPanel()
+      : tab === "daily"
+      ? dailyPanel()
+      : classPanel();
   $app.innerHTML =
     header() +
     `<nav class="admin-nav tabs" role="tablist">${tabs.map(([id, l]) => `<button class="tab" role="tab" data-act="tab" data-tab="${id}" aria-selected="${tab === id}">${l}</button>`).join("")}</nav>` +
     `<div class="stack">${tab === "quizzes" ? flashHTML() : ""}${panel}</div>`;
   if (tab === "class") drawQR();
+  if (presenting) renderPresent();
+  if (tab === "poster") {
+    drawPoster();
+    const box = document.getElementById("posterBox");
+    if (box && window.ResizeObserver) new ResizeObserver(() => box.isConnected && String(box.clientWidth) !== box.dataset.w && drawPoster()).observe(box);
+  }
 }
+
+window.addEventListener("resize", () => tab === "poster" && drawPoster());
 
 function csv() {
   const head = ["Student", "Username", "Quiz", "Date", "Attempt", "On leaderboard", "Total", "Max", ...SKILLS.map((s) => s.label)];
@@ -357,7 +646,24 @@ document.addEventListener("click", guard(async (e) => {
     draft.sections.splice(Number(el.dataset.i), 1);
     render();
   } else if (act === "csv") csv();
-  else if (act === "copy-link") {
+  else if (act === "lb-week") {
+    lbState.mode = "week";
+    lbState.quizId = el.dataset.id;
+    render();
+  } else if (act === "lb-all") {
+    lbState.mode = "all";
+    render();
+  } else if (act === "present") {
+    setPresent(true);
+  } else if (act === "present-close") {
+    setPresent(false);
+  } else if (act === "poster-download") {
+    await downloadPoster();
+  } else if (act === "poster-reset") {
+    const q = quizzes.find((x) => x.id === poster.quizId);
+    if (q) Object.assign(poster, quizTexts(q), { badge: "NEW QUIZ", perk: "Live leaderboard · Review your mistakes · New idiom every day", note: "Have you created your profile in our ESL Hub?" });
+    render();
+  } else if (act === "copy-link") {
     const link = studentLink();
     try {
       await navigator.clipboard.writeText(link);
@@ -394,6 +700,11 @@ document.addEventListener("click", guard(async (e) => {
 }));
 
 document.addEventListener("change", guard(async (e) => {
+  if (e.target.matches("[data-lblevel]")) {
+    lbState.level = e.target.value;
+    render();
+  }
+  if (e.target.dataset.poster && poster && (e.target.type === "checkbox" || e.target.tagName === "SELECT" || e.target.type === "date")) onPosterField(e.target);
   if (e.target.dataset.act === "status") {
     await store.setQuizStatus(e.target.dataset.id, e.target.value);
     say("Status updated.");
@@ -407,6 +718,7 @@ document.addEventListener("change", guard(async (e) => {
 }));
 
 document.addEventListener("input", (e) => {
+  if (e.target.dataset.poster && poster && e.target.type !== "checkbox" && e.target.tagName !== "SELECT") onPosterField(e.target);
   if (e.target.id === "quizText") editor.text = e.target.value;
   if (e.target.dataset.draft) setPath(draft, e.target.dataset.draft, e.target.value);
 });
@@ -435,7 +747,7 @@ function start() {
   }, { all: true });
   store.onResults((r) => {
     results = r;
-    if (tab !== "announce" && !typing()) render();
+    if ((tab !== "announce" || presenting) && !typing()) render();
   });
   store.onStudents((s) => {
     students = s;
@@ -447,7 +759,7 @@ function start() {
   });
   store.onProfiles((l) => {
     profiles = new Map(l.map((p) => [p.sid || p.id, p]));
-    if (tab === "class" && !typing()) render();
+    if ((tab === "class" || tab === "leaderboard" || presenting) && !typing()) render();
   });
   store.onSettings((s) => {
     if (!draft) {
@@ -460,7 +772,7 @@ function start() {
   });
   store.getClassCode().then((c) => {
     classCode = c || "";
-    if (tab === "class") render();
+    if (tab === "class" || tab === "poster") render();
   });
 }
 

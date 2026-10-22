@@ -8,13 +8,14 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,600&family=Hanken+Grotesk:wght@400;500;600;700&family=Caveat:wght@600&display=swap">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <div class="bg" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
   <div id="demo"></div>
   <div class="shell" id="app"><p>Loading…</p></div>
+  <div class="present" id="present" hidden></div>
   <script>
     if (location.protocol === "file:") {
       document.getElementById("app").innerHTML =
@@ -23,6 +24,7 @@
     }
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script type="module" src="js/admin.js"></script>
 </body>
 </html>

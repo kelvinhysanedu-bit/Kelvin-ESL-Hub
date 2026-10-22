@@ -23,6 +23,14 @@ Double-click **start.bat**. It starts a small local server and opens the teacher
 
 Don't double-click `index.html` or `admin.html` directly. Browsers block the page's scripts when opened as plain files.
 
+## Leaderboard on the teacher page
+
+The **Leaderboard** tab on the teacher page shows the same live ranking students see, with a tab for each week, All time, and a level filter, without you having to join as a student. It updates by itself as scores come in. **Present full screen** opens a large version for projecting in class. Press Esc to exit. It stays live while you present, and you can still switch weeks.
+
+## Weekly announcement poster
+
+The teacher page has a **Poster** tab that builds a poster for a new quiz. It fills itself from the quiz you choose (title, number of questions, areas covered), the idiom of the day and quote of the week for the date you pick, a **leaderboard sneak peek** (the top 3 or 5 of the latest week with results, a chosen week, or all time), and your student link in a small QR code. A yellow **sticky note** holds a question for your students (for example "Have you created your profile in our ESL Hub?") and is fully editable. Each section can be switched off. Choose a size (portrait, square, story or A4 print) and press **Download PNG**. If the text is too long for the size, a warning appears. A top 5 leaderboard needs the story or A4 size. The leaderboard shows students' names and scores, so turn it off for public posts if you prefer. The "class code in the QR code" box controls whether the code is built into the link. Leave it ticked for posting in your class group, and untick it for public posts, since anyone who scans a code with the class code in it can join.
+
 ## What students can do
 
 - **Join with just a name and a PIN.** The teacher shares a link with the class code built in (`.../?class=yourcode`, with a QR code on the teacher page), so students never type the code. Their name is also what the leaderboard shows. Two students can use the same name: the PIN tells them apart, and if both pick the same PIN the second is asked to choose another. On a device they have used before, the sign-in screen lists their name so they only type the PIN. The PIN field has a Show/Hide button.
