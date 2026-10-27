@@ -1,3 +1,4 @@
+import "./fx.js";
 import { createStore } from "./store.js";
 import { padletEmbedUrl, writingChallenge } from "./config.js";
 import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor, attemptOf, effectiveResults, pickedAttempt } from "./logic.js";
@@ -1033,6 +1034,7 @@ function render(enter = false) {
   const first = view === "home" && me ? captureRects($app) : null;
   const body = !me ? joinView() : view === "quiz" ? quizView() : view === "result" && shown ? resultView() : view === "profile" ? profileView() : homeView();
   $app.innerHTML = topbar() + body;
+  document.body.classList.toggle("quiz-mode", !!me && view === "quiz");
   $app.classList.toggle("enter", enter && !RM);
   if (enter) {
     clearTimeout(enterTimer);

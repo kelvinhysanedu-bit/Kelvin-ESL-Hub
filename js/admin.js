@@ -1,3 +1,4 @@
+import "./fx.js";
 import { createStore } from "./store.js";
 import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults, hashPin, buildBoard } from "./logic.js";
 import { sampleText } from "./sample.js";
