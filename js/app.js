@@ -290,11 +290,38 @@ function earlierRow(q) {
       ${last ? `<button class="btn ghost small" data-act="result" data-id="${esc(q.id)}">Result ${last.total}/${last.max}</button>` : ""}</div></div>`;
 }
 
+/* All earlier open quizzes live behind one control that drops down inside the quiz card, grouped by month. */
+let earlierOpen = false;
+
+const monthLabel = (iso) => {
+  if (!iso) return "Other";
+  const [y, m] = iso.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+};
+
+function earlierRowsHTML(earlier) {
+  const groups = [];
+  earlier.forEach((q) => {
+    const k = monthLabel(q.date);
+    let g = groups.find((x) => x.k === k);
+    if (!g) groups.push((g = { k, items: [] }));
+    g.items.push(q);
+  });
+  const multi = groups.length > 1;
+  return groups.map((g) => `${multi ? `<div class="prev-month">${esc(g.k)}</div>` : ""}${g.items.map(earlierRow).join("")}`).join("");
+}
+
+const CHEV_DOWN = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
+
 function earlierList(earlier) {
   if (!earlier.length) return "";
-  const rest = earlier.slice(3);
-  return `<div class="prev"><div class="label">Earlier quizzes</div>${earlier.slice(0, 3).map(earlierRow).join("")}
-    ${rest.length ? `<details class="prev-more"><summary>Show ${rest.length} more</summary>${rest.map(earlierRow).join("")}</details>` : ""}</div>`;
+  const todo = earlier.filter((q) => !myAttempts(q.id).length).length;
+  return `<div class="earlier">
+    <button type="button" class="earlier-toggle" data-act="earlier-toggle" aria-expanded="${earlierOpen}" aria-controls="earlierPanel">
+      <span>Earlier quizzes</span><span class="et-count">${earlier.length}</span>${todo ? `<span class="et-todo">${todo} not taken yet</span>` : ""}
+      <span class="et-chev">${CHEV_DOWN}</span></button>
+    <div class="earlier-panel ${earlierOpen ? "open" : ""}" id="earlierPanel"><div class="earlier-inner"><div class="earlier-list">${earlierRowsHTML(earlier)}</div></div></div>
+  </div>`;
 }
 
 function heroCard(quiz, i, earlier = []) {
@@ -1080,7 +1107,11 @@ document.addEventListener("click", async (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (el.tagName === "A") e.preventDefault();
-  if (act === "toggle-pin") {
+  if (act === "earlier-toggle") {
+    earlierOpen = !earlierOpen;
+    document.getElementById("earlierPanel")?.classList.toggle("open", earlierOpen);
+    el.setAttribute("aria-expanded", String(earlierOpen));
+  } else if (act === "toggle-pin") {
     const input = el.parentElement.querySelector("input");
     const show = input.type === "password";
     input.type = show ? "text" : "password";
