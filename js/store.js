@@ -55,6 +55,17 @@ function demoStore() {
     onStudents: (cb) => on("students", cb, () => Object.values(db.students)),
     onComments: (key, cb) => on("comments", cb, () => commentRows().filter((c) => c.key === key)),
     onRecentComments: (cb) => on("comments", cb, () => commentRows().sort((a, b) => b.createdAt - a.createdAt).slice(0, 150)),
+    async getCommentsBetween(from, to) {
+      return commentRows().filter((c) => c.createdAt >= from && c.createdAt < to);
+    },
+    /* The monthly recap is kept apart from the announcements, so saving one never wipes the other. */
+    onRecap: (cb) => on("settings", cb, () => db.recap || null),
+    async saveRecap(r) {
+      if (r) db.recap = clean(r);
+      else delete db.recap;
+      save();
+      notify("settings");
+    },
     async addComment(c) {
       (db.comments ||= {})["c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)] = c;
       save();
@@ -215,6 +226,12 @@ async function firebaseStore(admin) {
     onStudents: (cb) => fs.onSnapshot(col("students"), (s) => cb(rows(s)), fail),
     onComments: (key, cb) => fs.onSnapshot(fs.query(col("comments"), fs.where("key", "==", key)), (s) => cb(rows(s)), fail),
     onRecentComments: (cb) => fs.onSnapshot(fs.query(col("comments"), fs.orderBy("createdAt", "desc"), fs.limit(150)), (s) => cb(rows(s)), fail),
+    async getCommentsBetween(from, to) {
+      const s = await fs.getDocs(fs.query(col("comments"), fs.where("createdAt", ">=", from), fs.where("createdAt", "<", to)));
+      return rows(s);
+    },
+    onRecap: (cb) => fs.onSnapshot(fs.doc(db, "settings", "recap"), (s) => cb(s.exists() ? s.data() : null), fail),
+    saveRecap: (r) => (r ? fs.setDoc(fs.doc(db, "settings", "recap"), clean(r)) : fs.deleteDoc(fs.doc(db, "settings", "recap"))),
     addComment: (c) => fs.addDoc(col("comments"), c),
     updateComment: (id, patch) => fs.updateDoc(fs.doc(db, "comments", id), patch),
     deleteComment: (id) => fs.deleteDoc(fs.doc(db, "comments", id)),

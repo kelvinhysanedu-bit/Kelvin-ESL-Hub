@@ -336,3 +336,77 @@ export function fmtDate(iso) {
 }
 
 export const pct = (got, max) => (max ? Math.round((got / max) * 100) : 0);
+
+/* ------------------------------------------------------ monthly recap */
+
+export const AWARD_DEFS = [
+  { id: "marathon", tag: "Quiz marathon", line: "Took the most quizzes" },
+  { id: "top", tag: "Top of the board", line: "Most points on the leaderboard" },
+  { id: "retake", tag: "Never gives up", line: "Retook quizzes to beat their own score" },
+  { id: "ace", tag: "Sharp shooter", line: "Best score on a single quiz" },
+  { id: "voice", tag: "Voice of the class", line: "Shared the most comments" },
+  { id: "loved", tag: "Class favourite", line: "Wrote the most loved comment" },
+];
+
+export const monthOf = (ts) => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+export const monthName = (ym) => new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1, 1).toLocaleDateString("en-GB", { month: "long" });
+
+const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+const clip = (s, n) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+
+/* The month's winners, worked out from the results and comments. Ties are settled by the next-best figure, so there is always one winner. */
+export function computeAwards({ month, results, comments, profileOf }) {
+  const rs = results.filter((r) => monthOf(r.takenAt) === month);
+  const stats = new Map();
+  const get = (sid, name) => {
+    if (!stats.has(sid)) stats.set(sid, { sid, name, quizzes: new Set(), attempts: 0, points: 0, best: null });
+    return stats.get(sid);
+  };
+  rs.forEach((r) => {
+    const s = get(r.sid, r.nickname);
+    s.quizzes.add(r.quizId);
+    s.attempts += 1;
+  });
+  effectiveResults(rs, profileOf).forEach((r) => {
+    const s = get(r.sid, r.nickname);
+    s.points += r.total;
+    const p = r.max ? r.total / r.max : 0;
+    if (!s.best || p > s.best.p) s.best = { p, title: r.quizTitle || "", total: r.total, max: r.max };
+  });
+  const list = [...stats.values()];
+  const ranked = (arr, ...keys) => [...arr].sort((a, b) => { for (const k of keys) { const d = k(b) - k(a); if (d) return d; } return 0; });
+  const who = (sid, fallback) => {
+    const p = profileOf(sid) || {};
+    return { sid, name: p.name || fallback || "Student", color: p.color ?? 0, glyph: p.glyph || 0 };
+  };
+  /* Nobody wins more than two awards, so the credit spreads around: the next best student gets it instead. */
+  const wins = new Map();
+  const out = [];
+  const award = (id, candidates, stat, blurb = () => "") => {
+    const w = candidates.find((c) => (wins.get(c.sid) || 0) < 2);
+    if (!w) return;
+    wins.set(w.sid, (wins.get(w.sid) || 0) + 1);
+    out.push({ id, tag: AWARD_DEFS.find((d) => d.id === id).tag, ...who(w.sid, w.name), stat: stat(w), blurb: blurb(w) });
+  };
+
+  award("marathon", ranked(list.filter((s) => s.quizzes.size), (s) => s.quizzes.size, (s) => s.attempts, (s) => s.points), (s) => plural(s.quizzes.size, "quiz", "quizzes"));
+  award("top", ranked(list.filter((s) => s.points), (s) => s.points, (s) => s.quizzes.size), (s) => `${s.points} pts`);
+  award("retake", ranked(list.filter((s) => s.attempts > s.quizzes.size), (s) => s.attempts - s.quizzes.size, (s) => s.attempts), (s) => plural(s.attempts - s.quizzes.size, "retake"));
+  award("ace", ranked(list.filter((s) => s.best && s.best.p > 0), (s) => s.best.p, (s) => s.best.max), (s) => `${Math.round(s.best.p * 100)}% on ${clip(s.best.title.split(":")[0], 18)}`);
+
+  const cs = comments.filter((c) => monthOf(c.createdAt) === month);
+  const byStudent = new Map();
+  cs.forEach((c) => {
+    const e = byStudent.get(c.sid) || { sid: c.sid, name: c.name, n: 0, loves: 0 };
+    e.n += 1;
+    e.loves += (c.loves || []).length;
+    byStudent.set(c.sid, e);
+  });
+  award("voice", ranked([...byStudent.values()], (e) => e.n, (e) => e.loves), (e) => plural(e.n, "comment"));
+  award("loved", ranked(cs.filter((c) => (c.loves || []).length), (c) => (c.loves || []).length, (c) => -c.createdAt), (c) => plural((c.loves || []).length, "love"), (c) => clip(c.text, 110));
+  return out;
+}

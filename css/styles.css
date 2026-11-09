@@ -796,3 +796,44 @@ dialog#modal:has(.rd) { width: min(460px, calc(100% - 28px)); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .brand .by .ul { transform: scaleX(1); }
 }
+
+/* class awards: last month's stars */
+.recap { position: relative; overflow: hidden; border-color: color-mix(in srgb, var(--sk-vocabulary) 45%, var(--line)); background: linear-gradient(180deg, color-mix(in srgb, var(--sk-vocabulary) 9%, var(--panel)) 0%, var(--panel) 46%); }
+.rc-head { display: flex; align-items: center; gap: 12px; }
+.rc-head h3 { font-size: 22px; margin-top: 2px; }
+.rc-star { display: grid; place-items: center; width: 42px; height: 42px; flex: none; border-radius: 12px; color: #2a1604; background: linear-gradient(135deg, #ffd978, #e59a3b); box-shadow: 0 10px 18px -10px rgba(229, 154, 59, 0.9); animation: rcTwinkle 3.2s ease-in-out infinite; }
+@keyframes rcTwinkle { 0%, 100% { transform: rotate(0) scale(1); } 45% { transform: rotate(14deg) scale(1.1); } 60% { transform: rotate(-8deg) scale(1.04); } }
+.rc-sub { margin: 10px 0 14px; font-size: 13.5px; color: var(--muted); }
+.rc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.aw { --c: var(--accent); display: flex; align-items: center; gap: 11px; padding: 9px 11px; border-radius: 10px; background: var(--soft); border: 1px solid transparent; transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
+.aw:hover { transform: translateY(-2px); border-color: var(--c); box-shadow: 0 12px 20px -16px var(--c); }
+.aw[data-a="marathon"] { --c: var(--sk-grammar); }
+.aw[data-a="top"] { --c: var(--sk-vocabulary); }
+.aw[data-a="retake"] { --c: var(--sk-reading); }
+.aw[data-a="ace"] { --c: var(--sk-phrasal); }
+.aw[data-a="voice"] { --c: var(--sk-writing); }
+.aw[data-a="loved"] { --c: var(--sk-functional); }
+.aw-ic { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 10px; color: #fff; background: var(--c); transition: transform 0.3s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.aw:hover .aw-ic { transform: rotate(-8deg) scale(1.1); }
+.aw-main { display: flex; flex-direction: column; min-width: 0; flex: 1; gap: 1px; }
+.aw-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c); }
+.aw-who { display: flex; align-items: center; gap: 6px; font-size: 14px; min-width: 0; }
+.aw-who b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aw-blurb { font-family: "Newsreader", Georgia, serif; font-style: italic; font-size: 13px; color: var(--muted); line-height: 1.35; margin-top: 2px; }
+.aw-stat { flex: none; max-width: 38%; text-align: right; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--ink); line-height: 1.25; }
+.aw-choice { position: relative; margin-top: 14px; padding: 16px 16px 14px; border-radius: 12px; overflow: hidden; color: #2a1604; background: linear-gradient(135deg, #ffe7a8, #f7c15d); box-shadow: 0 18px 30px -22px rgba(229, 154, 59, 0.95); }
+.aw-choice::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.6), transparent); transform: skewX(-18deg); pointer-events: none; animation: freshSweep 5.5s ease-in-out 1.5s infinite; }
+.ac-ribbon { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; background: #2a1604; color: #ffd978; }
+.aw-choice blockquote { margin: 10px 0 10px; font-family: "Newsreader", Georgia, serif; font-size: 18px; line-height: 1.4; font-style: italic; }
+.ac-by { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.ac-by span { display: flex; flex-direction: column; line-height: 1.25; }
+.ac-by small { font-size: 11.5px; opacity: 0.75; }
+.ac-note { margin: 10px 0 0; padding-top: 8px; border-top: 1px dashed rgba(42, 22, 4, 0.35); font-size: 13px; }
+.rc-confetti { position: absolute; inset: 0 0 auto 0; height: 120px; pointer-events: none; overflow: hidden; }
+.rc-confetti i { position: absolute; left: var(--x); bottom: 0; width: 7px; height: 11px; border-radius: 2px; background: var(--c); opacity: 0; }
+/* the items pop in the first time the card is seen */
+.recap:not(.in) .aw, .recap:not(.in) .aw-choice { opacity: 0; transform: translateY(12px) scale(0.97); }
+.recap.in .aw, .recap.in .aw-choice { animation: awPop 0.6s cubic-bezier(0.3, 1.4, 0.5, 1) both; animation-delay: calc(var(--k) * 110ms + 150ms); }
+.recap.in .rc-confetti i { animation: rcBurst 1.4s ease-out both; animation-delay: var(--d); }
+@keyframes awPop { from { opacity: 0; transform: translateY(14px) scale(0.95); } to { opacity: 1; transform: none; } }
+@keyframes rcBurst { 0% { opacity: 1; transform: translateY(0) rotate(0); } 100% { opacity: 0; transform: translateY(-110px) rotate(260deg); } }

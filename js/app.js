@@ -2,7 +2,7 @@ import { measureTopbar } from "./fx.js";
 import { createStore } from "./store.js";
 import { padletEmbedUrl, writingChallenge } from "./config.js";
 import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor, attemptOf, effectiveResults, pickedAttempt } from "./logic.js";
-import { avatar, glyphIcon, skillVar, countUp, captureRects, playFlip, brandHTML, timeAgo, RM } from "./ui.js";
+import { avatar, glyphIcon, skillVar, countUp, captureRects, playFlip, brandHTML, timeAgo, awardIcon, RM } from "./ui.js";
 import { idiomFor, quoteFor, today, isPreviewDate, msToNextDay, formatCountdown, MONTHS } from "./content.js";
 
 const $app = document.getElementById("app");
@@ -14,6 +14,7 @@ const MAX_COMMENT = 500;
 
 let store;
 let settings = { nextQuiz: null, sections: [] };
+let recap = null;
 let quizzes = [];
 let results = [];
 let profiles = new Map();
@@ -467,6 +468,56 @@ function leaderboardCard(idx) {
   return `<section class="card rise" style="--i:${idx}">${head}${legend}<ol class="board">${list}</ol></section>`;
 }
 
+/* ------------------------------------------- last month's class awards */
+
+let recapSeen = false;
+let recapWatch = null;
+
+/* The card's items pop in the first time it scrolls into view. */
+function watchRecap() {
+  recapWatch?.disconnect();
+  const el = document.getElementById("recapCard");
+  if (!el || el.classList.contains("in") || !("IntersectionObserver" in window)) return;
+  recapWatch = new IntersectionObserver(([e]) => {
+    if (!e.isIntersecting) return;
+    recapSeen = true;
+    el.classList.add("in");
+    recapWatch.disconnect();
+  }, { threshold: 0.25 });
+  recapWatch.observe(el);
+}
+
+function recapCard(i) {
+  const awards = recap?.awards || [];
+  if (!awards.length && !recap?.choice) return "";
+  const c = recap.choice;
+  const confetti = Array.from({ length: 12 }, (_, k) => `<i style="--x:${(k * 8 + 4) % 100}%;--d:${(k % 5) * 0.12}s;--c:var(--sk-${["grammar", "vocabulary", "phrasal", "wordform", "functional", "reading", "writing", "listening"][k % 8]})"></i>`).join("");
+  return `<section class="card recap rise${recapSeen ? " in" : ""}" id="recapCard" style="--i:${i}" aria-label="${esc(recap.label)} class awards">
+    <div class="rc-confetti" aria-hidden="true">${confetti}</div>
+    <div class="rc-head"><span class="rc-star" aria-hidden="true">${awardIcon("star", 22)}</span><div><div class="label">Class awards</div><h3>${esc(recap.label)}'s stars</h3></div></div>
+    <p class="rc-sub">Thank you to everyone who took quizzes, shared ideas and kept the board lively.</p>
+    ${
+      awards.length
+        ? `<ul class="rc-list">${awards
+            .map(
+              (a, k) => `<li class="aw" data-a="${esc(a.id)}" style="--k:${k}"><span class="aw-ic">${awardIcon(a.id)}</span>
+          <span class="aw-main"><span class="aw-tag">${esc(a.tag)}</span><span class="aw-who">${avatar(a.name, a.color, a.glyph, 22)}<b>${esc(a.name)}</b></span>${a.blurb ? `<span class="aw-blurb">${quoteMark(a.blurb)}</span>` : ""}</span>
+          <span class="aw-stat">${esc(a.stat)}</span></li>`
+            )
+            .join("")}</ul>`
+        : ""
+    }
+    ${
+      c
+        ? `<div class="aw-choice" style="--k:${awards.length}"><div class="ac-ribbon">${awardIcon("star", 14)}<span>Tr. Kelvin's choice</span></div>
+      <blockquote>${quoteMark(c.text)}</blockquote>
+      <div class="ac-by">${avatar(c.name, c.color, c.glyph, 24)}<span><b>${esc(c.name)}</b><small>${esc(c.on || "")}</small></span></div>
+      ${c.note ? `<p class="ac-note">${esc(c.note)}</p>` : ""}</div>`
+        : ""
+    }
+  </section>`;
+}
+
 function railCards() {
   const n = settings.nextQuiz;
   const next =
@@ -479,11 +530,12 @@ function railCards() {
     next +
     dailyCard("idiom", 3) +
     dailyCard("quote", 4) +
+    recapCard(5) +
     secs
       .map((s, i) =>
         s.title || s.body
-          ? `<article class="card rail-card rise" style="--i:${5 + i}"><h3>${esc(s.title || "")}</h3><p>${nl2br(s.body || "")}</p></article>`
-          : `<article class="card rail-card blank rise" style="--i:${5 + i}"><p>More coming soon.</p></article>`
+          ? `<article class="card rail-card rise" style="--i:${6 + i}"><h3>${esc(s.title || "")}</h3><p>${nl2br(s.body || "")}</p></article>`
+          : `<article class="card rail-card blank rise" style="--i:${6 + i}"><p>More coming soon.</p></article>`
       )
       .join("")
   );
@@ -1240,6 +1292,7 @@ function render(enter = false) {
   renderedKey = key;
   document.body.classList.toggle("quiz-mode", !!me && view === "quiz");
   watchBanner();
+  watchRecap();
   measureTopbar();
   if (first) playFlip($app, first);
   $app.querySelectorAll(".num[data-v]").forEach((el) => {
@@ -1439,6 +1492,10 @@ document.addEventListener("change", (e) => {
   }
   if (store.mode === "demo") renderDemoBar();
   if (!me && getRecent().length) joinTab = "back";
+  store.onRecap?.((r) => {
+    recap = r;
+    if (ready) rerender();
+  });
   const waits = [
     subscribeDaily(),
     new Promise((res) => {

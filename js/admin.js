@@ -1,6 +1,6 @@
 import "./fx.js";
 import { createStore } from "./store.js";
-import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults, hashPin, buildBoard } from "./logic.js";
+import { SKILLS, esc, validateQuiz, quizToText, fmtDate, slug, attemptOf, effectiveResults, hashPin, buildBoard, computeAwards, monthName } from "./logic.js";
 import { sampleText } from "./sample.js";
 import { brandHTML, timeAgo, avatar, skillVar } from "./ui.js";
 import { idiomFor, quoteFor, today, IDIOMS, QUOTES } from "./content.js";
@@ -312,6 +312,95 @@ function dailyPanel() {
       </tbody></table></div></section>`;
 }
 
+/* ------------------------------------------------------- monthly recap */
+
+let published = null;
+let recapMonth = "";
+let recapOff = new Set();
+let recapChoice = "";
+let recapNote = "";
+let recapComments = [];
+let recapLoaded = "";
+let recapInit = false;
+
+const monthsBack = () => {
+  const now = today();
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1 - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    return { value, label: d.toLocaleDateString("en-GB", { month: "long", year: "numeric" }) };
+  });
+};
+
+async function loadRecapComments() {
+  if (!recapMonth || recapLoaded === recapMonth) return;
+  recapLoaded = recapMonth;
+  const [y, m] = recapMonth.split("-").map(Number);
+  const list = await store.getCommentsBetween(new Date(y, m - 1, 1).getTime(), new Date(y, m, 1).getTime());
+  if (recapLoaded !== recapMonth) return;
+  recapComments = list.filter((c) => /^(idiom|quote):/.test(c.key || "")).sort((a, b) => (b.loves || []).length - (a.loves || []).length || b.createdAt - a.createdAt);
+  if (tab === "recap") render();
+}
+
+function recapAwards() {
+  return computeAwards({ month: recapMonth, results, comments: recapComments, profileOf: (sid) => profiles.get(sid) });
+}
+
+function recapPanel() {
+  if (!recapMonth) recapMonth = monthsBack()[0].value;
+  loadRecapComments();
+  const awards = recapAwards();
+  const label = (key) => {
+    const [kind, date] = key.split(":");
+    return (kind === "idiom" ? "Idiom, " : "Quote, week of ") + shortDate(date);
+  };
+  const pub = published
+    ? `<p class="msg ok">Students can see the <strong>${esc(published.label)}</strong> recap right now. Publish again to replace it, or <button class="link-btn" data-act="recap-unpublish">take it down</button>.</p>`
+    : `<p class="msg">Nothing is published yet, so students don't see this section.</p>`;
+  return `<section class="card"><div class="card-head"><div><h2>Monthly recap</h2>
+      <p class="sub">Thank the students who made last month lively. The winners below are worked out from the results and comments. Untick any you don't want, pick your favourite comment, then publish.</p></div>
+      <label class="field" style="margin:0"><span>Month</span><select data-act="recap-month">${monthsBack().map((o) => `<option value="${o.value}" ${o.value === recapMonth ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select></label></div>
+      ${flashHTML()}${pub}
+      ${
+        awards.length
+          ? `<div class="table-wrap"><table><thead><tr><th>Show</th><th>Award</th><th>Student</th><th>Why</th></tr></thead><tbody>
+        ${awards.map((a) => `<tr><td><input type="checkbox" data-act="recap-toggle" data-id="${a.id}" ${recapOff.has(a.id) ? "" : "checked"} aria-label="Show ${esc(a.tag)}"></td>
+          <td><strong>${esc(a.tag)}</strong></td><td>${avatar(a.name, a.color, a.glyph, 26)} ${esc(a.name)}</td>
+          <td style="white-space:normal">${esc(a.stat)}${a.blurb ? `<br><em class="sub">&ldquo;${esc(a.blurb)}&rdquo;</em>` : ""}</td></tr>`).join("")}
+        </tbody></table></div>`
+          : `<p class="empty">No quiz results or comments in this month yet.</p>`
+      }</section>
+    <section class="card"><div class="card-head"><div><h2>Tr. Kelvin's choice</h2>
+      <p class="sub">Pick the comment that felt the most genuine and stayed with you. It gets its own spotlight. Idiom and quote comments from this month, most loved first.</p></div></div>
+      ${
+        recapComments.length
+          ? `<div class="table-wrap"><table><thead><tr><th>Pick</th><th>Student</th><th>On</th><th>Comment</th><th>Loves</th></tr></thead><tbody>
+        <tr><td><input type="radio" name="choice" data-act="recap-choice" value="" ${recapChoice ? "" : "checked"} aria-label="No choice"></td><td colspan="4"><em class="sub">No spotlight comment this month</em></td></tr>
+        ${recapComments.map((c) => `<tr><td><input type="radio" name="choice" data-act="recap-choice" value="${esc(c.id)}" ${recapChoice === c.id ? "checked" : ""} aria-label="Pick this comment"></td>
+          <td>${esc(profiles.get(c.sid)?.name || c.name)}</td><td>${esc(label(c.key))}</td><td style="white-space:normal;min-width:240px">${esc(c.text)}</td><td>${(c.loves || []).length || ""}</td></tr>`).join("")}
+        </tbody></table></div>
+        <label class="field"><span>Why you picked it (optional, students see this)</span><input type="text" maxlength="140" data-recap-note value="${esc(recapNote)}" placeholder="For example: honest, thoughtful, and it made me smile."></label>`
+          : `<p class="empty">No idiom or quote comments in this month.</p>`
+      }</section>
+    <section class="card"><div class="card-head"><div><h2>Ready?</h2><p class="sub">This puts the recap below the quote of the week on the student page.</p></div></div>
+      <button class="btn" data-act="recap-publish" ${awards.length || recapChoice ? "" : "disabled"}>Publish to students</button></section>`;
+}
+
+function recapSnapshot() {
+  const awards = recapAwards().filter((a) => !recapOff.has(a.id));
+  const c = recapComments.find((x) => x.id === recapChoice);
+  const p = c ? profiles.get(c.sid) || {} : {};
+  return {
+    month: recapMonth,
+    label: monthName(recapMonth),
+    publishedAt: Date.now(),
+    awards,
+    hidden: [...recapOff],
+    choiceId: c ? c.id : "",
+    choice: c ? { name: p.name || c.name, color: p.color ?? 0, glyph: p.glyph || 0, text: c.text, on: c.kind === "idiom" ? "Idiom of the day" : "Quote of the week", note: recapNote.trim() } : null,
+  };
+}
+
 /* --------------------------------------------------------------- class */
 
 /* The link students use: the same page address with the class code filled in. */
@@ -539,7 +628,7 @@ function render() {
     $app.innerHTML = header() + gate();
     return;
   }
-  const tabs = [["quizzes", "Quizzes"], ["leaderboard", "Leaderboard"], ["announce", "Announcements"], ["poster", "Poster"], ["daily", "Idioms & quotes"], ["class", "Class"]];
+  const tabs = [["quizzes", "Quizzes"], ["leaderboard", "Leaderboard"], ["announce", "Announcements"], ["poster", "Poster"], ["daily", "Idioms & quotes"], ["recap", "Monthly recap"], ["class", "Class"]];
   const panel =
     tab === "quizzes"
       ? quizzesPanel()
@@ -551,6 +640,8 @@ function render() {
       ? posterPanel()
       : tab === "daily"
       ? dailyPanel()
+      : tab === "recap"
+      ? recapPanel()
       : classPanel();
   $app.innerHTML =
     header() +
@@ -692,6 +783,14 @@ document.addEventListener("click", guard(async (e) => {
       await store.deleteComment(el.dataset.id);
       say("Comment deleted.");
     }
+  } else if (act === "recap-publish") {
+    await store.saveRecap(recapSnapshot());
+    say("Published. Students now see the " + monthName(recapMonth) + " recap below the quote of the week.");
+  } else if (act === "recap-unpublish") {
+    if (confirm("Take the recap down from the student page?")) {
+      await store.saveRecap(null);
+      say("Recap taken down.");
+    }
   } else if (act === "del-result") {
     if (confirm("Delete this attempt? This can't be undone.")) {
       await store.deleteResult(el.dataset.id);
@@ -706,6 +805,18 @@ document.addEventListener("change", guard(async (e) => {
     render();
   }
   if (e.target.dataset.poster && poster && (e.target.type === "checkbox" || e.target.tagName === "SELECT" || e.target.type === "date")) onPosterField(e.target);
+  if (e.target.dataset.act === "recap-month") {
+    recapMonth = e.target.value;
+    recapOff = new Set();
+    recapChoice = "";
+    recapNote = "";
+    recapComments = [];
+    render();
+  }
+  if (e.target.dataset.act === "recap-toggle") {
+    e.target.checked ? recapOff.delete(e.target.dataset.id) : recapOff.add(e.target.dataset.id);
+  }
+  if (e.target.dataset.act === "recap-choice") recapChoice = e.target.value;
   if (e.target.dataset.act === "status") {
     await store.setQuizStatus(e.target.dataset.id, e.target.value);
     say("Status updated.");
@@ -721,6 +832,7 @@ document.addEventListener("change", guard(async (e) => {
 document.addEventListener("input", (e) => {
   if (e.target.dataset.poster && poster && e.target.type !== "checkbox" && e.target.tagName !== "SELECT") onPosterField(e.target);
   if (e.target.id === "quizText") editor.text = e.target.value;
+  if (e.target.dataset.recapNote !== undefined) recapNote = e.target.value;
   if (e.target.dataset.draft) setPath(draft, e.target.dataset.draft, e.target.value);
 });
 
@@ -761,6 +873,18 @@ function start() {
   store.onProfiles((l) => {
     profiles = new Map(l.map((p) => [p.sid || p.id, p]));
     if ((tab === "class" || tab === "leaderboard" || presenting) && !typing()) render();
+  });
+  store.onRecap((r) => {
+    published = r;
+    /* Come back to what was last published, so a republish keeps your spotlight pick and unticked awards. */
+    if (r && !recapInit) {
+      recapInit = true;
+      recapMonth = r.month;
+      recapChoice = r.choiceId || "";
+      recapNote = r.choice?.note || "";
+      recapOff = new Set(r.hidden || []);
+    }
+    if (tab === "recap" && !typing()) render();
   });
   store.onSettings((s) => {
     if (!draft) {
