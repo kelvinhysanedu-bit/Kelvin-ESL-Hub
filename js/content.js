@@ -84,6 +84,23 @@ export function today() {
 }
 export const isPreviewDate = () => /^\d{4}-\d{2}-\d{2}$/.test(new URLSearchParams(location.search).get("date") || "");
 
+/* The welcome banner at the top of the dashboard changes with the month:
+   [month name, small line above, headline, line below, colour hue, falling shape]. */
+export const MONTHS = [
+  ["January", "A brand new year", "Fresh start", "New year, new words. Pick up where you left off, or begin again.", 220, "dot"],
+  ["February", "The shortest month", "Short and sharp", "Fewer days, same big progress. Make every quiz count.", 335, "dot"],
+  ["March", "Spring is on its way", "Spring forward", "Time to grow your vocabulary along with the flowers.", 150, "leaf"],
+  ["April", "Showers and flowers", "Fresh ideas", "Let new words bloom. Your next quiz is ready.", 290, "dot"],
+  ["May", "Warmer days ahead", "Keep blooming", "You have come a long way. Keep the streak going.", 100, "leaf"],
+  ["June", "Summer is almost here", "Sunny sessions", "Long days, bright words. A good month to stretch your English.", 40, "dot"],
+  ["July", "Midsummer", "Stay curious", "Learning does not take a holiday. Keep your English warm.", 8, "dot"],
+  ["August", "The lazy days", "Easy does it", "A little each day goes a long way. Keep it light, keep it going.", 190, "dot"],
+  ["September", "Back to the books", "New term, new goals", "A fresh start for your English. Set a goal and begin.", 70, "leaf"],
+  ["October", "Leaves are turning", "Autumn begins", "Cosy evenings are made for learning. Dive into this month's quizzes.", 38, "leaf"],
+  ["November", "Welcome to the new month", "Hello, November", "The leaves are falling and the words are rising. Your first quiz of the month is ready, and a fresh leaderboard is waiting.", 12, "leaf"],
+  ["December", "The final stretch", "Finish strong", "One last month to shine. Make the year end on a high.", 350, "dot"],
+];
+
 export function idiomFor(d) {
   const n = dayNumber(d);
   return { kind: "idiom", item: IDIOMS[mod(n - ANCHOR, IDIOMS.length)], date: isoOf(n), key: `idiom:${isoOf(n)}` };

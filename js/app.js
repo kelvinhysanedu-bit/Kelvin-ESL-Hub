@@ -3,7 +3,7 @@ import { createStore } from "./store.js";
 import { padletEmbedUrl, writingChallenge } from "./config.js";
 import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor, attemptOf, effectiveResults, pickedAttempt } from "./logic.js";
 import { avatar, glyphIcon, skillVar, countUp, captureRects, playFlip, brandHTML, timeAgo, RM } from "./ui.js";
-import { idiomFor, quoteFor, today, isPreviewDate, msToNextDay, formatCountdown } from "./content.js";
+import { idiomFor, quoteFor, today, isPreviewDate, msToNextDay, formatCountdown, MONTHS } from "./content.js";
 
 const $app = document.getElementById("app");
 const $modal = document.getElementById("modal");
@@ -324,12 +324,56 @@ function earlierList(earlier) {
   </div>`;
 }
 
+/* Which quiz of its month this is (1 = the first one dated in that month). */
+function monthPosition(quiz) {
+  const m = (quiz.date || "").slice(0, 7);
+  if (!m) return 0;
+  return quizzes.filter((q) => q.status !== "draft" && (q.date || "").slice(0, 7) === m && ((q.date || "") < quiz.date || ((q.date || "") === quiz.date && (q.createdAt || 0) <= (quiz.createdAt || 0)))).length;
+}
+
+const BANNER_KEY = "eslhub.banner";
+const bannerSeen = () => {
+  try {
+    return localStorage.getItem(BANNER_KEY);
+  } catch {
+    return "";
+  }
+};
+
+/* A welcome banner for the current month. It shows once the newest open quiz is dated this month, and a student can close it for the rest of the month. */
+function monthBanner(hero) {
+  const now = today();
+  const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  if (!hero || (hero.date || "").slice(0, 7) !== ym || bannerSeen() === ym) return "";
+  const [name, kicker, headline, line, hue, shape] = MONTHS[now.getMonth()];
+  const first = monthPosition(hero) === 1;
+  const title = headline
+    .split(" ")
+    .map((w, wi, all) => {
+      const before = all.slice(0, wi).join(" ").length + (wi ? 1 : 0);
+      return `<span class="mb-w">${[...w].map((c, ci) => `<span class="mb-c" style="--n:${before + ci}">${esc(c)}</span>`).join("")}</span>`;
+    })
+    .join(" ");
+  const bits = Array.from({ length: 16 }, (_, k) => `<i class="mb-p ${shape}" style="--x:${(k * 37) % 100}%;--d:${-((k * 1.7) % 12).toFixed(1)}s;--t:${(9 + (k % 5) * 1.6).toFixed(1)}s;--s:${(7 + (k % 4) * 4)}px;--r:${(k * 53) % 360}deg"></i>`).join("");
+  const todo = !myAttempts(hero.id).length;
+  return `<section class="month-banner" id="monthBanner" style="--h:${hue}" aria-label="${esc(name)} welcome">
+    <div class="mb-glow a"></div><div class="mb-glow b"></div><div class="mb-bits" aria-hidden="true">${bits}</div>
+    <button type="button" class="mb-x" data-act="banner-close" data-month="${ym}" aria-label="Close this banner">&times;</button>
+    <div class="mb-kicker"><span class="mb-dot"></span>${esc(kicker)}</div>
+    <h2 class="mb-title" aria-label="${esc(headline)}"><span aria-hidden="true">${title}</span></h2>
+    <p class="mb-line">${esc(line)}</p>
+    ${first && todo ? `<div class="mb-cta"><button class="btn" data-act="start" data-id="${esc(hero.id)}">Start ${esc(name)}'s first quiz</button><span class="mb-hint">${hero.questions.length} questions &middot; take it any time</span></div>` : ""}
+  </section>`;
+}
+
 function heroCard(quiz, i, earlier = []) {
   const attempts = myAttempts(quiz.id);
   const last = attempts[attempts.length - 1];
   const done = new Set(results.filter((r) => r.quizId === quiz.id).map((r) => r.sid)).size;
-  return `<article class="card hero rise" style="--i:${i}">
-    <div class="label">This week's quiz</div>
+  const first = monthPosition(quiz) === 1;
+  const monthName = first ? MONTHS[Number(quiz.date.slice(5, 7)) - 1][0] : "";
+  return `<article class="card hero rise${first ? " fresh" : ""}" style="--i:${i}">
+    <div class="label">${first ? `${esc(monthName)}'s first quiz<span class="new">New month</span>` : "This week's quiz"}</div>
     <h2>${esc(quiz.title)}</h2>
     <div class="hero-meta"><span>${quiz.questions.length} questions</span>${quiz.date ? `<span>${esc(fmtDate(quiz.date))}</span>` : ""}<span>Take it any time</span></div>
     <div class="chips">${skillCounts(quiz).map((s) => `<span class="chip"><i style="--c:${skillVar(s.id)}"></i>${esc(s.name)} &middot; ${s.n}</span>`).join("")}</div>
@@ -452,7 +496,7 @@ function homeView() {
     ? heroCard(open[0], 0, open.slice(1))
     : `<article class="card hero rise" style="--i:0"><div class="label">This week's quiz</div><h2>No quiz is open right now</h2><p class="sub">Check the next quiz date on the right. You can review your past quizzes in your profile.</p></article>`;
   const idx = open.length || 1;
-  return `<div class="dash"><div class="stack">${hero}${leaderboardCard(idx)}${padletCard(idx + 1)}${writingCard(idx + 2)}</div><aside class="stack">${railCards()}</aside></div>`;
+  return `${monthBanner(open[0])}<div class="dash"><div class="stack">${hero}${leaderboardCard(idx)}${padletCard(idx + 1)}${writingCard(idx + 2)}</div><aside class="stack">${railCards()}</aside></div>`;
 }
 
 function embedCard(i, { label = "", title, sub, url }) {
@@ -1107,7 +1151,12 @@ document.addEventListener("click", async (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (el.tagName === "A") e.preventDefault();
-  if (act === "earlier-toggle") {
+  if (act === "banner-close") {
+    try {
+      localStorage.setItem(BANNER_KEY, el.dataset.month);
+    } catch {}
+    el.closest(".month-banner").remove();
+  } else if (act === "earlier-toggle") {
     earlierOpen = !earlierOpen;
     document.getElementById("earlierPanel")?.classList.toggle("open", earlierOpen);
     el.setAttribute("aria-expanded", String(earlierOpen));
