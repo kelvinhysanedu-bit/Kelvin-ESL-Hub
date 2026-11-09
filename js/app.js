@@ -293,6 +293,14 @@ function earlierRow(q) {
 /* All earlier open quizzes live behind one control that drops down inside the quiz card, grouped by month. */
 let earlierOpen = false;
 
+/* A quiz's day: the date in its file, or the day it was uploaded when the file has none. */
+const dayOf = (q) => {
+  if (q.date) return q.date;
+  if (!q.createdAt) return "";
+  const d = new Date(q.createdAt);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 const monthLabel = (iso) => {
   if (!iso) return "Other";
   const [y, m] = iso.split("-").map(Number);
@@ -302,7 +310,7 @@ const monthLabel = (iso) => {
 function earlierRowsHTML(earlier) {
   const groups = [];
   earlier.forEach((q) => {
-    const k = monthLabel(q.date);
+    const k = monthLabel(dayOf(q));
     let g = groups.find((x) => x.k === k);
     if (!g) groups.push((g = { k, items: [] }));
     g.items.push(q);
@@ -326,9 +334,10 @@ function earlierList(earlier) {
 
 /* Which quiz of its month this is (1 = the first one dated in that month). */
 function monthPosition(quiz) {
-  const m = (quiz.date || "").slice(0, 7);
+  const day = dayOf(quiz);
+  const m = day.slice(0, 7);
   if (!m) return 0;
-  return quizzes.filter((q) => q.status !== "draft" && (q.date || "").slice(0, 7) === m && ((q.date || "") < quiz.date || ((q.date || "") === quiz.date && (q.createdAt || 0) <= (quiz.createdAt || 0)))).length;
+  return quizzes.filter((q) => q.status !== "draft" && dayOf(q).slice(0, 7) === m && (dayOf(q) < day || (dayOf(q) === day && (q.createdAt || 0) <= (quiz.createdAt || 0)))).length;
 }
 
 const BANNER_KEY = "eslhub.banner";
@@ -344,7 +353,7 @@ const bannerSeen = () => {
 function monthBanner(hero) {
   const now = today();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  if (!hero || (hero.date || "").slice(0, 7) !== ym || bannerSeen() === ym) return "";
+  if (!hero || dayOf(hero).slice(0, 7) !== ym || bannerSeen() === ym) return "";
   const [name, kicker, headline, line, hue, shape] = MONTHS[now.getMonth()];
   const first = monthPosition(hero) === 1;
   const title = headline
@@ -371,7 +380,7 @@ function heroCard(quiz, i, earlier = []) {
   const last = attempts[attempts.length - 1];
   const done = new Set(results.filter((r) => r.quizId === quiz.id).map((r) => r.sid)).size;
   const first = monthPosition(quiz) === 1;
-  const monthName = first ? MONTHS[Number(quiz.date.slice(5, 7)) - 1][0] : "";
+  const monthName = first ? MONTHS[Number(dayOf(quiz).slice(5, 7)) - 1][0] : "";
   return `<article class="card hero rise${first ? " fresh" : ""}" style="--i:${i}">
     <div class="label">${first ? `${esc(monthName)}'s first quiz<span class="new">New month</span>` : "This week's quiz"}</div>
     <h2>${esc(quiz.title)}</h2>
@@ -393,7 +402,7 @@ function heroCard(quiz, i, earlier = []) {
 /* Every week the student can see: all open and closed quizzes, plus any older week that has results. Newest first. */
 function weeksList(all) {
   const m = new Map();
-  quizzes.forEach((q) => m.set(q.id, { id: q.id, title: q.title, date: q.date || "", status: q.status, t: q.createdAt || 0 }));
+  quizzes.forEach((q) => m.set(q.id, { id: q.id, title: q.title, date: dayOf(q), status: q.status, t: q.createdAt || 0 }));
   all.forEach((r) => {
     if (!m.has(r.quizId)) m.set(r.quizId, { id: r.quizId, title: r.quizTitle, date: r.quizDate || "", status: "archived", t: r.takenAt || 0 });
   });
@@ -491,7 +500,7 @@ function railCards() {
 }
 
 function homeView() {
-  const open = quizzes.filter((q) => q.status === "open").sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || 0) - (a.createdAt || 0));
+  const open = quizzes.filter((q) => q.status === "open").sort((a, b) => dayOf(b).localeCompare(dayOf(a)) || (b.createdAt || 0) - (a.createdAt || 0));
   const hero = open.length
     ? heroCard(open[0], 0, open.slice(1))
     : `<article class="card hero rise" style="--i:0"><div class="label">This week's quiz</div><h2>No quiz is open right now</h2><p class="sub">Check the next quiz date on the right. You can review your past quizzes in your profile.</p></article>`;
