@@ -563,6 +563,28 @@ body:has(dialog[open]) { overflow: hidden; }
 .md-foot .msg { margin: 0; padding: 6px 10px; }
 .md-foot .btn { margin-left: auto; }
 .md-list { margin-top: 24px; }
+
+/* the "ready?" check before a quiz */
+dialog#modal:has(.rd) { width: min(460px, calc(100% - 28px)); }
+.rd { text-align: center; padding: 30px 28px 28px; animation: rdStep 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes rdStep { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.rd-icon { display: grid; place-items: center; width: 84px; height: 84px; margin: 0 auto 14px; border-radius: 50%; color: var(--accent); background: radial-gradient(circle, var(--tint) 0%, transparent 72%); }
+.rd-ask .rd-icon svg { animation: rdWiggle 2.6s ease-in-out infinite; transform-origin: 50% 60%; }
+@keyframes rdWiggle { 0%, 70%, 100% { transform: rotate(0); } 78% { transform: rotate(-9deg); } 86% { transform: rotate(8deg); } 94% { transform: rotate(-4deg); } }
+.rd-yes .rd-icon { color: var(--good); }
+.rd-yes .rd-icon svg { animation: rdPop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.rd-tick { stroke-dasharray: 40; stroke-dashoffset: 40; animation: rdDraw 0.45s 0.15s ease-out forwards; }
+@keyframes rdPop { from { transform: scale(0.5); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes rdDraw { to { stroke-dashoffset: 0; } }
+.rd-no .rd-icon { color: var(--focus); }
+.rd-no .rd-icon svg { animation: rdPop 0.45s cubic-bezier(0.3, 1.6, 0.5, 1) both; }
+.rd .label { display: block; }
+.rd .md-title { font-size: clamp(22px, 5vw, 28px); margin: 8px 0 8px; }
+.rd .sub { margin: 0 auto; max-width: 340px; }
+.rd-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 22px; }
+.rd-bar { height: 4px; margin: 18px auto 0; max-width: 220px; border-radius: 999px; background: var(--soft); overflow: hidden; }
+.rd-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--btn-a), var(--btn-b)); transform-origin: left; animation: rdFill 1.9s linear both; }
+@keyframes rdFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .cm { display: flex; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
 .cm-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .cm-h .you-tag { margin-left: 0; }

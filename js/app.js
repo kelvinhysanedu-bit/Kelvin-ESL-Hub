@@ -546,6 +546,69 @@ function dailyCard(kind, i) {
   </button>`;
 }
 
+/* ------------------------------------------- the "ready?" pop-up before a quiz */
+
+/* [question, small print, reply to yes, reply to no]. One is picked at random each time. */
+const READY_LINES = [
+  ["Do you at least have ten minutes of your time for this quiz?", "Be honest. The quiz can tell.", "Appreciate your consideration. Your future self says thank you.", "Poor thing, you're just exploring, aren't you? The quiz will wait. It's very patient."],
+  ["Can this quiz borrow ten minutes of your life?", "It promises to give them back. Mostly.", "Appreciate it! Your minutes will be treated with great respect.", "Hoarding your minutes like treasure. Very dragon of you."],
+  ["Ten minutes. That's all we ask. Do you have them?", "Check down the back of the sofa if you have to.", "Found them! Lovely. Let's make them count.", "Not even down the back of the sofa? Bold. Come back when you've had a proper look."],
+  ["Do you solemnly swear to give this quiz ten minutes of your full attention?", "Phones face down, please. Tea is allowed.", "Oath accepted. Nobody will tell the grammar police. Good luck!", "Ah, got other plans? The quiz will sit here looking sad until you return."],
+  ["Quick check before we begin: have you got ten minutes, or are you squeezing this in?", "No judgement. Slight judgement.", "Look at you being responsible. Right, let's go!", "Just browsing, are we? Window shopping for grammar. Very classy."],
+];
+let pending = null;
+let lastReady = -1;
+
+const READY_ICON = {
+  ask: '<svg viewBox="0 0 48 48" width="52" height="52" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="27" r="14"/><path d="M24 20v7l4.5 3M20 6h8M24 6v7M38 12l-3 3"/></svg>',
+  yes: '<svg viewBox="0 0 48 48" width="52" height="52" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="18"/><path class="rd-tick" d="m15.5 24.5 6 6 11-12.5"/></svg>',
+  no: '<svg viewBox="0 0 48 48" width="52" height="52" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="18"/><path d="M17 31c2-3 4-4 7-4s5 1 7 4M17.5 19v2.5M30.5 19v2.5"/></svg>',
+};
+
+function readyHTML() {
+  const [q, small, yes, no] = READY_LINES[pending.n];
+  const step = pending.step;
+  const body =
+    step === "ask"
+      ? `<h2 id="mdTitle" class="md-title">${esc(q)}</h2><p class="sub">${esc(small)}</p>
+         <div class="rd-btns"><button class="btn" data-act="ready-yes">Yes, I do</button><button class="btn ghost" data-act="ready-no">No, not really</button></div>`
+      : step === "yes"
+        ? `<h2 id="mdTitle" class="md-title">${esc(yes)}</h2><div class="rd-bar" aria-hidden="true"><i></i></div>
+           <div class="rd-btns"><button class="btn" data-act="ready-go">Let's go</button></div>`
+        : `<h2 id="mdTitle" class="md-title">${esc(no)}</h2>
+           <div class="rd-btns"><button class="btn" data-act="ready-go">Fine, I'll take it anyway</button><button class="btn ghost" data-act="ready-later">Maybe later</button></div>`;
+  return `<div class="md rd rd-${step}"><div class="rd-icon">${READY_ICON[step]}</div>
+    <div class="label">${step === "ask" ? "Before we begin" : step === "yes" ? "Great" : "Hmm"}</div>${body}</div>`;
+}
+
+function showReady() {
+  $modal.innerHTML = readyHTML();
+  if (!$modal.open) $modal.showModal();
+  $modal.querySelector(".rd-btns .btn")?.focus();
+}
+
+function openReady(id) {
+  let n;
+  do n = Math.floor(Math.random() * READY_LINES.length);
+  while (n === lastReady && READY_LINES.length > 1);
+  lastReady = n;
+  pending = { id, n, step: "ask", timer: 0 };
+  showReady();
+}
+
+function beginQuiz(id) {
+  const quiz = quizById(id);
+  if (!quiz) return;
+  clearTimeout(pending?.timer);
+  pending = null;
+  if ($modal.open) $modal.close();
+  activeQuiz = quiz;
+  warned = false;
+  view = "quiz";
+  render(true);
+  window.scrollTo(0, 0);
+}
+
 function modalHTML(kind) {
   const d = daily[kind];
   const it = d.item;
@@ -1252,12 +1315,21 @@ document.addEventListener("click", async (e) => {
     joinTab = "back";
     go("home");
   } else if (act === "start") {
-    activeQuiz = quizById(el.dataset.id);
-    if (!activeQuiz) return;
-    warned = false;
-    view = "quiz";
-    render(true);
-    window.scrollTo(0, 0);
+    /* A first attempt gets the friendly "ready?" check. Retakes go straight in. */
+    if (!quizById(el.dataset.id)) return;
+    if (myAttempts(el.dataset.id).length) beginQuiz(el.dataset.id);
+    else openReady(el.dataset.id);
+  } else if (act === "ready-yes" && pending) {
+    pending.step = "yes";
+    showReady();
+    pending.timer = setTimeout(() => pending && beginQuiz(pending.id), 1900);
+  } else if (act === "ready-no" && pending) {
+    pending.step = "no";
+    showReady();
+  } else if (act === "ready-go" && pending) {
+    beginQuiz(pending.id);
+  } else if (act === "ready-later") {
+    $modal.close();
   } else if (act === "result" || act === "review") {
     const quiz = quizById(el.dataset.id);
     const list = myAttempts(el.dataset.id);
@@ -1331,6 +1403,8 @@ $modal.addEventListener("click", (e) => {
 $modal.addEventListener("close", () => {
   modalKind = null;
   editing = null;
+  clearTimeout(pending?.timer);
+  pending = null;
 });
 document.addEventListener("visibilitychange", () => !document.hidden && checkNewDay());
 setInterval(checkNewDay, 60000);
