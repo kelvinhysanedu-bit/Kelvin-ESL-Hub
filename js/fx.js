@@ -23,13 +23,46 @@ if (!reduce) {
   );
 }
 
+/* The top bar gets smaller once the page is scrolled. It would also pull the page up by the height it loses, so the
+   difference is measured here and given back as bottom margin (--tb-delta), which keeps everything below it still. */
+export function measureTopbar() {
+  const bar = document.querySelector(".topbar");
+  const body = document.body;
+  if (!bar || body.classList.contains("quiz-mode")) return;
+  const was = body.classList.contains("scrolled");
+  body.classList.add("no-tr");
+  body.classList.remove("scrolled");
+  const full = bar.offsetHeight;
+  body.classList.add("scrolled");
+  const small = bar.offsetHeight;
+  body.classList.toggle("scrolled", was);
+  void bar.offsetHeight;
+  body.classList.remove("no-tr");
+  document.documentElement.style.setProperty("--tb-delta", Math.max(0, full - small) + "px");
+}
+
 let idle;
+let measured = false;
 function onScroll() {
   const body = document.body;
-  body.classList.toggle("scrolled", window.scrollY > 6);
+  const y = window.scrollY;
+  if (!measured) {
+    measured = true;
+    measureTopbar();
+  }
+  /* Two thresholds, so the bar does not flutter between the two sizes near the top. */
+  if (y > 12) body.classList.add("scrolled");
+  else if (y < 4) body.classList.remove("scrolled");
   body.classList.add("is-scrolling");
   clearTimeout(idle);
   idle = setTimeout(() => body.classList.remove("is-scrolling"), 180);
 }
 window.addEventListener("scroll", onScroll, { passive: true });
-document.body.classList.toggle("scrolled", window.scrollY > 6);
+document.body.classList.toggle("scrolled", window.scrollY > 12);
+
+let resizing;
+window.addEventListener("resize", () => {
+  clearTimeout(resizing);
+  resizing = setTimeout(measureTopbar, 200);
+});
+document.fonts?.ready.then(measureTopbar);

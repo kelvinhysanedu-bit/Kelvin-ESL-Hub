@@ -1,4 +1,4 @@
-import "./fx.js";
+import { measureTopbar } from "./fx.js";
 import { createStore } from "./store.js";
 import { padletEmbedUrl, writingChallenge } from "./config.js";
 import { SKILLS, SKILL, LEVELS, AVATAR_COLORS, GLYPH_COUNT, esc, makeSid, hashPin, scoreQuiz, buildBoard, fmtDate, pct, slug, nameColor, attemptOf, effectiveResults, pickedAttempt } from "./logic.js";
@@ -105,7 +105,7 @@ function topbar() {
             <button data-act="nav" data-v="home" ${here === "home" ? 'aria-current="page"' : ""}>Dashboard</button>
             <button data-act="nav" data-v="profile" ${here === "profile" ? 'aria-current="page"' : ""}>Profile</button></nav>
            <button class="me" data-act="nav" data-v="profile" aria-label="Your profile">${avatar(p.name, p.color, p.glyph, 34)}
-             <span><span class="name">${esc(p.name)}</span><br><span class="lvl-line">${p.level ? "Level " + esc(p.level) : "Level not set"}</span></span></button>`
+             <span class="who"><span class="name">${esc(p.name)}</span><span class="lvl-line">${p.level ? "Level " + esc(p.level) : "Level not set"}</span></span></button>`
         : ""
     }
   </header>`;
@@ -340,20 +340,11 @@ function monthPosition(quiz) {
   return quizzes.filter((q) => q.status !== "draft" && dayOf(q).slice(0, 7) === m && (dayOf(q) < day || (dayOf(q) === day && (q.createdAt || 0) <= (quiz.createdAt || 0)))).length;
 }
 
-const BANNER_KEY = "eslhub.banner";
-const bannerSeen = () => {
-  try {
-    return localStorage.getItem(BANNER_KEY);
-  } catch {
-    return "";
-  }
-};
-
-/* A welcome banner for the current month. It shows once the newest open quiz is dated this month, and a student can close it for the rest of the month. */
+/* A welcome banner for the current month. It shows for the whole month once the newest open quiz is dated in it. */
 function monthBanner(hero) {
   const now = today();
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  if (!hero || dayOf(hero).slice(0, 7) !== ym || bannerSeen() === ym) return "";
+  if (!hero || dayOf(hero).slice(0, 7) !== ym) return "";
   const [name, kicker, headline, line, hue, shape] = MONTHS[now.getMonth()];
   const first = monthPosition(hero) === 1;
   const title = headline
@@ -367,7 +358,6 @@ function monthBanner(hero) {
   const todo = !myAttempts(hero.id).length;
   return `<section class="month-banner" id="monthBanner" style="--h:${hue}" aria-label="${esc(name)} welcome">
     <div class="mb-glow a"></div><div class="mb-glow b"></div><div class="mb-bits" aria-hidden="true">${bits}</div>
-    <button type="button" class="mb-x" data-act="banner-close" data-month="${ym}" aria-label="Close this banner">&times;</button>
     <div class="mb-kicker"><span class="mb-dot"></span>${esc(kicker)}</div>
     <h2 class="mb-title" aria-label="${esc(headline)}"><span aria-hidden="true">${title}</span></h2>
     <p class="mb-line">${esc(line)}</p>
@@ -1110,16 +1100,84 @@ async function onSaveProfile(form) {
 
 /* --------------------------------------------------------------- shell */
 
+/* Live updates patch the page in place instead of rebuilding it, so nothing restarts or reloads:
+   the banner keeps animating, the Padlet boards stay loaded, and cards don't blink. */
+const keyOf = (n) => (n.nodeType === 1 ? n.id || n.dataset.k || "" : "");
+const sameKind = (a, b) => a.nodeType === b.nodeType && a.nodeName === b.nodeName && keyOf(a) === keyOf(b);
+
+function patchNode(f, t) {
+  if (f.nodeType !== 1) {
+    if (f.nodeValue !== t.nodeValue) f.nodeValue = t.nodeValue;
+    return;
+  }
+  for (const a of [...f.attributes]) if (!t.hasAttribute(a.name) && !(f.nodeName === "DETAILS" && a.name === "open")) f.removeAttribute(a.name);
+  for (const a of t.attributes) if (f.getAttribute(a.name) !== a.value && !(f.nodeName === "DETAILS" && a.name === "open")) f.setAttribute(a.name, a.value);
+  if (f.nodeName === "IFRAME") return;
+  if (f.nodeName === "INPUT") {
+    if (f.type === "checkbox" || f.type === "radio") f.checked = t.hasAttribute("checked");
+    else if (f !== document.activeElement) f.value = t.getAttribute("value") || "";
+  }
+  if (f.nodeName === "OPTION") f.selected = t.hasAttribute("selected");
+  patchChildren(f, t);
+}
+
+function patchChildren(from, to) {
+  const next = [...to.childNodes];
+  next.forEach((t, i) => {
+    const f = from.childNodes[i];
+    if (!f) return from.appendChild(t);
+    if (sameKind(f, t)) return patchNode(f, t);
+    const k = keyOf(t);
+    const hit = k && [...from.childNodes].slice(i + 1).find((n) => keyOf(n) === k);
+    if (hit) {
+      from.insertBefore(hit, f);
+      patchNode(hit, t);
+    } else from.insertBefore(t, f);
+  });
+  while (from.childNodes.length > next.length) from.removeChild(from.lastChild);
+}
+
+let renderedKey = "";
+let bannerWatch = null;
+
+/* Pause the banner's motion while it is off screen. */
+function watchBanner() {
+  bannerWatch?.disconnect();
+  const b = document.getElementById("monthBanner");
+  if (!b || !("IntersectionObserver" in window)) return;
+  bannerWatch = new IntersectionObserver(([e]) => b.classList.toggle("mb-off", !e.isIntersecting));
+  bannerWatch.observe(b);
+}
+
 function render(enter = false) {
   const first = view === "home" && me ? captureRects($app) : null;
   const body = !me ? joinView() : view === "quiz" ? quizView() : view === "result" && shown ? resultView() : view === "profile" ? profileView() : homeView();
-  $app.innerHTML = topbar() + body;
-  document.body.classList.toggle("quiz-mode", !!me && view === "quiz");
-  $app.classList.toggle("enter", enter && !RM);
-  if (enter) {
-    clearTimeout(enterTimer);
-    enterTimer = setTimeout(() => $app.classList.remove("enter"), 1800);
+  const key = `${!!me}|${view}`;
+  const patch = !enter && key === renderedKey && $app.firstElementChild;
+  if (patch) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = topbar() + body;
+    patchChildren($app, tpl.content);
+  } else {
+    /* Moving between pages keeps the top bar as it is, so the title doesn't replay its entrance every time. */
+    const bar = $app.querySelector(":scope > .topbar");
+    if (bar && renderedKey.startsWith(`${!!me}|`)) {
+      const tpl = document.createElement("template");
+      tpl.innerHTML = topbar();
+      patchNode(bar, tpl.content.firstElementChild);
+      while (bar.nextSibling) bar.nextSibling.remove();
+      bar.insertAdjacentHTML("afterend", body);
+    } else $app.innerHTML = topbar() + body;
+    $app.classList.toggle("enter", enter && !RM);
+    if (enter) {
+      clearTimeout(enterTimer);
+      enterTimer = setTimeout(() => $app.classList.remove("enter"), 2200);
+    }
   }
+  renderedKey = key;
+  document.body.classList.toggle("quiz-mode", !!me && view === "quiz");
+  watchBanner();
+  measureTopbar();
   if (first) playFlip($app, first);
   $app.querySelectorAll(".num[data-v]").forEach((el) => {
     const key = el.dataset.sk || "";
@@ -1139,8 +1197,15 @@ function go(next) {
   if (next !== "result") shown = next === "quiz" ? shown : null;
   profileMsg = null;
   pickMsg = null;
-  render(true);
-  window.scrollTo(0, 0);
+  const swap = () => {
+    $app.classList.remove("leaving");
+    render(true);
+    window.scrollTo(0, 0);
+  };
+  /* The old page fades out for a moment before the new one rises in. */
+  if (RM || !me || !$app.firstElementChild) return swap();
+  $app.classList.add("leaving");
+  setTimeout(swap, 140);
 }
 
 const busy = () =>
@@ -1160,12 +1225,7 @@ document.addEventListener("click", async (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (el.tagName === "A") e.preventDefault();
-  if (act === "banner-close") {
-    try {
-      localStorage.setItem(BANNER_KEY, el.dataset.month);
-    } catch {}
-    el.closest(".month-banner").remove();
-  } else if (act === "earlier-toggle") {
+  if (act === "earlier-toggle") {
     earlierOpen = !earlierOpen;
     document.getElementById("earlierPanel")?.classList.toggle("open", earlierOpen);
     el.setAttribute("aria-expanded", String(earlierOpen));

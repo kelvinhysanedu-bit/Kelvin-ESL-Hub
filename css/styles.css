@@ -92,7 +92,7 @@
 }
 
 * { box-sizing: border-box; }
-html { background: var(--bg); }
+html { background: var(--bg); overflow-anchor: none; }
 
 body {
   margin: 0;
@@ -126,7 +126,7 @@ a { color: inherit; }
 /* top bar */
 .topbar {
   position: sticky; top: 0; z-index: 30; isolation: isolate; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
-  padding: 10px 0 14px; margin-bottom: 20px; border-bottom: 1px solid var(--line); transition: padding 0.25s ease, border-color 0.25s ease;
+  padding: 10px 0 14px; margin-bottom: 20px; border-bottom: 1px solid var(--line); transition: padding 0.3s ease, margin 0.3s ease, gap 0.3s ease, border-color 0.3s ease;
 }
 /* The frosted band behind the top bar is as wide as the screen. It is clear at the top of the page, then blurs the content scrolling under it. */
 .topbar::before {
@@ -134,10 +134,27 @@ a { color: inherit; }
   background: transparent; -webkit-backdrop-filter: blur(0px); backdrop-filter: blur(0px);
   transition: background 0.3s ease, backdrop-filter 0.3s ease, -webkit-backdrop-filter 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
 }
-.scrolled .topbar { border-bottom-color: transparent; padding-top: 6px; padding-bottom: 6px; }
+.scrolled .topbar { border-bottom-color: transparent; }
 .scrolled .topbar::before { background: var(--glass); -webkit-backdrop-filter: blur(14px) saturate(1.5); backdrop-filter: blur(14px) saturate(1.5); border-bottom-color: var(--line); box-shadow: 0 12px 30px -24px var(--shadow); }
 .is-scrolling .topbar::before { -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8); }
 .quiz-mode .topbar { position: relative; }
+
+/* Scrolled: the top bar gets smaller. The margin gives back the height it loses (measured in fx.js), so the page below never moves. */
+.logo, .brand h1.t1, .brand .by, .brand-t, .me .avatar, .me .lvl-line, .nav button { transition: width 0.3s ease, height 0.3s ease, font-size 0.3s ease, max-height 0.3s ease, padding 0.3s ease, gap 0.3s ease, margin 0.3s ease; }
+.brand .by { max-height: 26px; overflow: hidden; }
+.me .who { display: flex; flex-direction: column; }
+.me .lvl-line { max-height: 18px; overflow: hidden; }
+.no-tr .topbar, .no-tr .topbar * { transition: none !important; }
+body:not(.quiz-mode).scrolled .topbar { padding-top: 6px; padding-bottom: 6px; margin-bottom: calc(20px + var(--tb-delta, 0px)); gap: 8px 20px; }
+body:not(.quiz-mode).scrolled .logo { width: 30px; height: 30px; }
+body:not(.quiz-mode).scrolled .brand { gap: 10px; }
+body:not(.quiz-mode).scrolled .brand-t { gap: 0; }
+body:not(.quiz-mode).scrolled .brand h1.t1 { font-size: 19px; }
+body:not(.quiz-mode).scrolled .brand .by { max-height: 0; padding-bottom: 0; }
+body:not(.quiz-mode).scrolled .me .avatar { width: 28px !important; height: 28px !important; font-size: 14px !important; }
+body:not(.quiz-mode).scrolled .me .lvl-line { max-height: 0; }
+body:not(.quiz-mode).scrolled .me .name { font-size: 13px; }
+body:not(.quiz-mode).scrolled .nav button { padding-top: 4px; padding-bottom: 4px; }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; margin-right: auto; }
 .brand-t { display: flex; flex-direction: column; gap: 2px; }
 .brand h1.t1 { font-size: 26px; font-weight: 600; line-height: 1.1; white-space: nowrap; }
@@ -697,9 +714,9 @@ body:has(dialog[open]) { overflow: hidden; }
   background: linear-gradient(118deg, hsl(calc(var(--h) + 232) 52% 24%) 0%, hsl(var(--h) 68% 38%) 56%, hsl(calc(var(--h) + 30) 86% 54%) 100%);
   box-shadow: 0 28px 50px -30px hsl(var(--h) 70% 30% / 0.85);
 }
-.mb-glow { position: absolute; z-index: -1; border-radius: 50%; filter: blur(46px); opacity: 0.55; pointer-events: none; animation: mbDrift 14s ease-in-out infinite alternate; }
-.mb-glow.a { width: 340px; height: 340px; right: -80px; top: -140px; background: hsl(calc(var(--h) + 40) 100% 70%); }
-.mb-glow.b { width: 300px; height: 300px; left: 18%; bottom: -190px; background: hsl(calc(var(--h) + 250) 90% 62%); animation-duration: 18s; animation-direction: alternate-reverse; }
+.mb-glow { position: absolute; z-index: -1; border-radius: 50%; pointer-events: none; will-change: transform; animation: mbDrift 14s ease-in-out infinite alternate; }
+.mb-glow.a { width: 460px; height: 460px; right: -140px; top: -230px; background: radial-gradient(circle, hsl(calc(var(--h) + 40) 100% 72% / 0.7) 0%, transparent 68%); }
+.mb-glow.b { width: 420px; height: 420px; left: 12%; bottom: -260px; background: radial-gradient(circle, hsl(calc(var(--h) + 250) 90% 64% / 0.6) 0%, transparent 68%); animation-duration: 18s; animation-direction: alternate-reverse; }
 @keyframes mbDrift { from { transform: translate(0, 0) scale(1); } to { transform: translate(-60px, 40px) scale(1.18); } }
 .mb-bits { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .mb-p { position: absolute; top: -24px; left: var(--x); width: var(--s); height: var(--s); background: hsl(calc(var(--h) + 34) 95% 76% / 0.7); transform: rotate(var(--r)); animation: mbFall var(--t) linear var(--d) infinite; }
@@ -727,8 +744,6 @@ body:has(dialog[open]) { overflow: hidden; }
 .mb-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 22px; }
 .mb-cta .btn { background: #fff; color: hsl(var(--h) 70% 28%); box-shadow: 0 14px 28px -14px rgba(0, 0, 0, 0.5); }
 .mb-hint { font-size: 13.5px; color: rgba(255, 255, 255, 0.82); }
-.mb-x { position: absolute; top: 12px; right: 14px; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.16); color: #fff; font-size: 20px; line-height: 1; cursor: pointer; transition: background 0.2s; }
-.mb-x:hover { background: rgba(255, 255, 255, 0.3); }
 @media (max-width: 560px) { .month-banner { padding: 30px 22px 26px; border-radius: 14px; } .mb-line { font-size: 15px; } }
 /* entrance: the banner rises, then the letters pop in one after another */
 @keyframes mbIn { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
@@ -748,8 +763,13 @@ body:has(dialog[open]) { overflow: hidden; }
 .hero .label .new { margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: #e59a3b; color: #2a1604; font-size: 10.5px; letter-spacing: 0.08em; }
 
 /* motion: Settle */
-@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-.enter .rise, .enter .row { animation: rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 50ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.enter .rise, .enter .row { animation: rise 0.6s cubic-bezier(0.22, 0.8, 0.26, 1) both; animation-delay: calc(var(--i, 0) * 70ms + 80ms); }
+/* going to another page: the old one fades out first (the top bar stays put) */
+#app > :not(.topbar) { transition: opacity 0.14s ease, transform 0.14s ease; }
+#app.leaving > :not(.topbar) { opacity: 0; transform: translateY(-6px); }
+/* pause the banner when it is off screen */
+.mb-off, .mb-off * { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   .brand .by .ul { transform: scaleX(1); }
