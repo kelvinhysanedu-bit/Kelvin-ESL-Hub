@@ -470,31 +470,31 @@ function leaderboardCard(idx) {
 
 /* ------------------------------------------- last month's class awards */
 
-let recapSeen = false;
-let recapWatch = null;
+const hasRecap = () => !!recap && ((recap.awards || []).length > 0 || !!recap.choice);
 
-/* The card's items pop in the first time it scrolls into view. */
-function watchRecap() {
-  recapWatch?.disconnect();
-  const el = document.getElementById("recapCard");
-  if (!el || el.classList.contains("in") || !("IntersectionObserver" in window)) return;
-  recapWatch = new IntersectionObserver(([e]) => {
-    if (!e.isIntersecting) return;
-    recapSeen = true;
-    el.classList.add("in");
-    recapWatch.disconnect();
-  }, { threshold: 0.25 });
-  recapWatch.observe(el);
+/* On the dashboard: a small preview. Tapping it opens everything in a pop-up. */
+function recapCard(i) {
+  if (!hasRecap()) return "";
+  const awards = recap.awards || [];
+  const faces = [...new Map(awards.map((a) => [a.sid, a])).values()].slice(0, 6);
+  const c = recap.choice;
+  const total = awards.length + (c ? 1 : 0);
+  const snip = c ? (c.text.length > 78 ? c.text.slice(0, 77).trimEnd() + "…" : c.text) : "";
+  return `<button type="button" class="recap-preview rise" id="recapCard" style="--i:${i}" data-act="recap-open" aria-haspopup="dialog">
+    <span class="rc-head"><span class="rc-star" aria-hidden="true">${awardIcon("star", 22)}</span><span><span class="label">Class awards</span><span class="rc-title">${esc(recap.label)}'s stars</span></span></span>
+    <span class="rc-faces" aria-hidden="true">${faces.map((a, k) => `<span class="rc-face" style="--k:${k}">${avatar(a.name, a.color, a.glyph, 34)}</span>`).join("")}</span>
+    ${c ? `<span class="rc-teaser"><span class="rc-mini">${awardIcon("star", 11)}Tr. Kelvin's choice</span><span class="rc-snip">${quoteMark(snip)}</span></span>` : ""}
+    <span class="foot"><span class="cta-text">Tap to see everyone</span><span class="meta">${total} ${total === 1 ? "shout-out" : "shout-outs"}</span></span>
+  </button>`;
 }
 
-function recapCard(i) {
-  const awards = recap?.awards || [];
-  if (!awards.length && !recap?.choice) return "";
+function recapModalHTML() {
+  const awards = recap.awards || [];
   const c = recap.choice;
-  const confetti = Array.from({ length: 12 }, (_, k) => `<i style="--x:${(k * 8 + 4) % 100}%;--d:${(k % 5) * 0.12}s;--c:var(--sk-${["grammar", "vocabulary", "phrasal", "wordform", "functional", "reading", "writing", "listening"][k % 8]})"></i>`).join("");
-  return `<section class="card recap rise${recapSeen ? " in" : ""}" id="recapCard" style="--i:${i}" aria-label="${esc(recap.label)} class awards">
-    <div class="rc-confetti" aria-hidden="true">${confetti}</div>
-    <div class="rc-head"><span class="rc-star" aria-hidden="true">${awardIcon("star", 22)}</span><div><div class="label">Class awards</div><h3>${esc(recap.label)}'s stars</h3></div></div>
+  const confetti = Array.from({ length: 16 }, (_, k) => `<i style="--x:${(k * 7 + 3) % 100}%;--d:${(k % 6) * 0.1}s;--c:var(--sk-${["grammar", "vocabulary", "phrasal", "wordform", "functional", "reading", "writing", "listening"][k % 8]})"></i>`).join("");
+  return `<div class="md recap-md"><div class="rc-confetti" aria-hidden="true">${confetti}</div>
+    <div class="md-head"><div class="label">Class awards</div><button class="x" data-act="close-modal" aria-label="Close">&times;</button></div>
+    <div class="rc-head"><span class="rc-star" aria-hidden="true">${awardIcon("star", 24)}</span><h2 id="mdTitle" class="md-title" style="margin:0">${esc(recap.label)}'s stars</h2></div>
     <p class="rc-sub">Thank you to everyone who took quizzes, shared ideas and kept the board lively.</p>
     ${
       awards.length
@@ -515,7 +515,7 @@ function recapCard(i) {
       ${c.note ? `<p class="ac-note">${esc(c.note)}</p>` : ""}</div>`
         : ""
     }
-  </section>`;
+  </div>`;
 }
 
 function railCards() {
@@ -1292,7 +1292,6 @@ function render(enter = false) {
   renderedKey = key;
   document.body.classList.toggle("quiz-mode", !!me && view === "quiz");
   watchBanner();
-  watchRecap();
   measureTopbar();
   if (first) playFlip($app, first);
   $app.querySelectorAll(".num[data-v]").forEach((el) => {
@@ -1341,7 +1340,11 @@ document.addEventListener("click", async (e) => {
   if (!el) return;
   const act = el.dataset.act;
   if (el.tagName === "A") e.preventDefault();
-  if (act === "earlier-toggle") {
+  if (act === "recap-open") {
+    if (!hasRecap()) return;
+    $modal.innerHTML = recapModalHTML();
+    if (!$modal.open) $modal.showModal();
+  } else if (act === "earlier-toggle") {
     earlierOpen = !earlierOpen;
     document.getElementById("earlierPanel")?.classList.toggle("open", earlierOpen);
     el.setAttribute("aria-expanded", String(earlierOpen));
